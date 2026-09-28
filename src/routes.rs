@@ -6,17 +6,11 @@ use axum::{
     Router,
 };
 use serde::Deserialize;
-use std::sync::Arc;
 
 use crate::markdown::render_markdown;
 use crate::notes::{self, Note};
 use crate::pages;
 use crate::themes::get_theme;
-
-#[derive(Clone)]
-pub struct AppState {
-    // Could hold shared config in the future
-}
 
 pub fn router() -> Router {
     Router::new()
@@ -30,7 +24,6 @@ pub fn router() -> Router {
         .route("/theme", post(theme_route))
         .route("/about", get(about_route))
         .route("/export", get(export_route))
-        .with_state(Arc::new(AppState {}))
 }
 
 fn get_theme_from_cookie(headers: &HeaderMap) -> String {
@@ -143,8 +136,13 @@ struct PreviewForm {
     content: String,
 }
 
-async fn preview_route(Form(form): Form<PreviewForm>) -> Result<impl IntoResponse, AppError> {
-    let html = render_markdown(&form.content);
+async fn preview_route(
+    headers: HeaderMap,
+    Form(form): Form<PreviewForm>,
+) -> Result<impl IntoResponse, AppError> {
+    let theme_name = get_theme_from_cookie(&headers);
+    let theme = get_theme(&theme_name);
+    let html = render_markdown(&form.content, theme);
     Ok(Html(pages::render_preview_fragment(&html).into_string()))
 }
 

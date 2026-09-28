@@ -14,6 +14,8 @@ GUI applications: a menu bar, split-pane editor, and file-based note storage.
 - **File-based storage** — notes are persisted as Markdown files in `notes/`
 - **28 built-in themes** — from Dark/Light to Solarized, Dracula, Nord, Monokai, and seasonal palettes
 - **Markdown extras** — tables, tasklists, strikethrough, and footnotes via `pulldown-cmark`
+- **Syntax highlighting** — code blocks are highlighted using the current theme's ANSI palette via `syntect`
+- **Mobile responsive** — collapses to a Notes/Write/Preview tab layout on phones, with 44px touch targets
 
 ## Quick Start
 

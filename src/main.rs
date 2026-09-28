@@ -3,6 +3,7 @@ mod notes;
 mod pages;
 mod routes;
 mod storage;
+mod syntax;
 mod themes;
 
 use axum::Router;
@@ -29,6 +30,9 @@ async fn main() {
 
     // Ensure notes directory exists
     std::fs::create_dir_all("notes").expect("Failed to create notes directory");
+
+    // Eagerly initialize syntax highlighting state so the first request isn't slow.
+    let _ = syntax::syntax_state();
 
     let app = Router::new()
         .merge(routes::router())

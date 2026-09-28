@@ -2,7 +2,46 @@ function app() {
   return {
     previewHtml: window.__INITIAL_PREVIEW__ || '',
     previewVisible: true,
+    tab: window.__DEFAULT_TAB__ || 'notes',
+    // Only one menu can be open at a time. Keeping a single name here (rather
+    // than a set of booleans) makes mutual exclusion automatic: opening Theme
+    // while Help is open reassigns this value, so Help's dropdown is hidden.
+    openMenu: null,
     _previewTimeout: null,
+
+    init() {
+      // Close menus on any click outside the menu bar. Alpine's `.outside`
+      // modifier cannot be used here because Maud treats `.` in attribute
+      // names as CSS class shorthand, so we bind it manually.
+      this._onDocClick = (event) => {
+        const menuBar = document.querySelector('.menu-bar');
+        if (this.openMenu && menuBar && !menuBar.contains(event.target)) {
+          this.closeMenus();
+        }
+      };
+      document.addEventListener('click', this._onDocClick);
+    },
+
+    destroy() {
+      if (this._onDocClick) {
+        document.removeEventListener('click', this._onDocClick);
+      }
+    },
+
+    toggleMenu(name) {
+      this.openMenu = this.openMenu === name ? null : name;
+    },
+
+    closeMenus() {
+      this.openMenu = null;
+    },
+
+    setTab(name) {
+      this.tab = name;
+      // Selecting the Preview tab should always reveal the preview, even if
+      // the toolbar toggle had hidden it on desktop.
+      if (name === 'preview') this.previewVisible = true;
+    },
 
     updatePreview(content) {
       if (this._previewTimeout) {
@@ -49,6 +88,10 @@ function app() {
     },
 
     handleKeydown(event) {
+      if (event.key === 'Escape' && this.openMenu) {
+        this.closeMenus();
+        return;
+      }
       if (event.ctrlKey || event.metaKey) {
         if (event.key.toLowerCase() === 's') {
           event.preventDefault();

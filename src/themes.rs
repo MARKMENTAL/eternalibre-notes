@@ -227,7 +227,7 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
             "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
         ],
         ansi_bright: [
-            "#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff",
+            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
         ],
     },
     Theme {
@@ -238,7 +238,7 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
             "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
         ],
         ansi_bright: [
-            "#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff",
+            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
         ],
     },
     Theme {
@@ -249,7 +249,7 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
             "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
         ],
         ansi_bright: [
-            "#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff",
+            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
         ],
     },
     Theme {
@@ -260,7 +260,7 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
             "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
         ],
         ansi_bright: [
-            "#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff",
+            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
         ],
     },
     Theme {
@@ -271,7 +271,7 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
             "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
         ],
         ansi_bright: [
-            "#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff",
+            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
         ],
     },
     Theme {
@@ -395,11 +395,13 @@ mod tests {
 
     #[test]
     fn dark_themes_use_readable_button_colors() {
-        // Themes with very dark bright-blue colors should fall back to the
-        // theme foreground color so primary buttons remain readable.
+        // Bright accent colors should be luminous enough to use as button
+        // backgrounds; very dark accents fall back to the theme foreground.
         let cyan = get_theme("Cyan on Black");
         let (bg, fg) = cyan.button_colors(4);
-        assert_eq!(bg, cyan.fg);
+        // After replacing #0000ff with #a9a9f9, the bright blue is readable
+        // and no longer falls back to the foreground color.
+        assert_eq!(bg, cyan.ansi_bright[4]);
         assert_eq!(fg, cyan.bg);
     }
 

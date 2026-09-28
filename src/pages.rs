@@ -14,15 +14,23 @@ pub fn render_app(
     let theme = get_theme(theme_name);
     let css = theme.to_css_block();
     let rendered_preview = current_note
-        .map(|n| render_markdown(&n.content))
+        .map(|n| render_markdown(&n.content, theme))
         .unwrap_or_default();
+
+    // Mobile lands on the note list when there is no note selected,
+    // otherwise on the editor. Server-rendered so it works without JS.
+    let default_tab = if current_note.is_some() {
+        "write"
+    } else {
+        "notes"
+    };
 
     html! {
         (DOCTYPE)
         html lang="en" data-theme=(theme_name) {
             head {
                 meta charset="utf-8";
-                meta name="viewport" content="width=device-width, initial-scale=1";
+                meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
                 title { "Rasuti Notes" }
                 style { (PreEscaped(css)) }
                 style { (PreEscaped(include_str!("../static/style.css"))) }
@@ -34,10 +42,11 @@ pub fn render_app(
                 @if let Some(msg) = message {
                     div class="flash-message" { (msg) }
                 }
+                (render_tab_bar(default_tab))
                 main class="app-body" {
-                    (render_sidebar(notes, current_note))
-                    (render_editor(current_note))
-                    (render_preview(&rendered_preview))
+                    (render_sidebar(notes, current_note, default_tab))
+                    (render_editor(current_note, default_tab))
+                    (render_preview(&rendered_preview, default_tab))
                 }
                 (render_status_bar(notes.len(), theme_name))
                 script {
@@ -57,11 +66,44 @@ fn escape_js(s: &str) -> String {
         .replace('\r', "\\r")
 }
 
+fn render_tab_bar(default_tab: &str) -> Markup {
+    html! {
+        nav class="tab-bar" {
+            button type="button" class="tab-button" data-tab-target="notes"
+                x-on:click="setTab('notes')"
+                x-bind:class="{ 'active': tab === 'notes' }" {
+                span class="tab-icon" { "\u{1F4C3}" }
+                span { "Notes" }
+            }
+            button type="button" class="tab-button" data-tab-target="write"
+                x-on:click="setTab('write')"
+                x-bind:class="{ 'active': tab === 'write' }" {
+                span class="tab-icon" { "\u{270E}" }
+                span { "Write" }
+            }
+            button type="button" class="tab-button" data-tab-target="preview"
+                x-on:click="setTab('preview')"
+                x-bind:class="{ 'active': tab === 'preview' }" {
+                span class="tab-icon" { "\u{1F4C4}" }
+                span { "Preview" }
+            }
+            script {
+                (PreEscaped(format!(
+                    "window.__DEFAULT_TAB__ = \"{}\";",
+                    default_tab
+                )))
+            }
+        }
+    }
+}
+
 fn render_menu_bar() -> Markup {
     html! {
         nav class="menu-bar" {
             ul class="menu-list" {
-                li class="menu-item" tabindex="0" {
+                li class="menu-item" tabindex="0"
+                    x-on:click="toggleMenu('file')"
+                    x-bind:class="{ 'open': openMenu === 'file' }" {
                     span { "File" }
                     ul class="menu-dropdown" {
                         li {
@@ -75,21 +117,27 @@ fn render_menu_bar() -> Markup {
                         }
                     }
                 }
-                li class="menu-item" tabindex="0" {
+                li class="menu-item" tabindex="0"
+                    x-on:click="toggleMenu('edit')"
+                    x-bind:class="{ 'open': openMenu === 'edit' }" {
                     span { "Edit" }
                     ul class="menu-dropdown" {
                         li { button x-on:click="focusEditor()" { "Focus Editor" } }
                         li { button x-on:click="saveCurrentNote()" { "Save Note" } }
                     }
                 }
-                li class="menu-item" tabindex="0" {
+                li class="menu-item" tabindex="0"
+                    x-on:click="toggleMenu('view')"
+                    x-bind:class="{ 'open': openMenu === 'view' }" {
                     span { "View" }
                     ul class="menu-dropdown" {
                         li { a href="/" { "Show All Notes" } }
                         li { button x-on:click="togglePreview()" { "Toggle Preview" } }
                     }
                 }
-                li class="menu-item" tabindex="0" {
+                li class="menu-item" tabindex="0"
+                    x-on:click="toggleMenu('theme')"
+                    x-bind:class="{ 'open': openMenu === 'theme' }" {
                     span { "Theme" }
                     ul class="menu-dropdown" {
                         @for theme in PREDEFINED_THEMES {
@@ -102,7 +150,9 @@ fn render_menu_bar() -> Markup {
                         }
                     }
                 }
-                li class="menu-item" tabindex="0" {
+                li class="menu-item" tabindex="0"
+                    x-on:click="toggleMenu('help')"
+                    x-bind:class="{ 'open': openMenu === 'help' }" {
                     span { "Help" }
                     ul class="menu-dropdown" {
                         li { a href="/about" { "About Rasuti Notes" } }
@@ -154,9 +204,15 @@ fn render_toolbar(current_note: Option<&Note>, query: Option<&str>, theme_name: 
     }
 }
 
-fn render_sidebar(notes: &[Note], current_note: Option<&Note>) -> Markup {
+fn render_sidebar(notes: &[Note], current_note: Option<&Note>, default_tab: &str) -> Markup {
+    let active = if default_tab == "notes" {
+        " mobile-active"
+    } else {
+        ""
+    };
     html! {
-        aside class="sidebar" {
+        aside class={"sidebar" (active)} data-tab-pane="notes"
+            x-bind:class="{ 'mobile-active': tab === 'notes' }" {
             div class="sidebar-header" { "Notes" }
             ul class="note-list" {
                 @if notes.is_empty() {
@@ -179,9 +235,16 @@ fn render_sidebar(notes: &[Note], current_note: Option<&Note>) -> Markup {
     }
 }
 
-fn render_editor(current_note: Option<&Note>) -> Markup {
+fn render_editor(current_note: Option<&Note>, default_tab: &str) -> Markup {
+    let active = if default_tab == "write" {
+        " mobile-active"
+    } else {
+        ""
+    };
     html! {
-        section class="editor-pane" x-data="{ saving: false }" {
+        section class={"editor-pane" (active)} data-tab-pane="write"
+            x-data="{ saving: false }"
+            x-bind:class="{ 'mobile-active': tab === 'write' }" {
             @if let Some(note) = current_note {
                 form
                     id="note-form"
@@ -220,9 +283,15 @@ fn render_editor(current_note: Option<&Note>) -> Markup {
     }
 }
 
-fn render_preview(html_content: &str) -> Markup {
+fn render_preview(html_content: &str, default_tab: &str) -> Markup {
+    let active = if default_tab == "preview" {
+        " mobile-active"
+    } else {
+        ""
+    };
     html! {
-        section class="preview-pane" x-bind:class="{ 'hidden': !previewVisible }" {
+        section class={"preview-pane" (active)} data-tab-pane="preview"
+            x-bind:class="{ 'hidden': !previewVisible, 'mobile-active': tab === 'preview' }" {
             div id="preview" class="markdown-body" x-html="previewHtml" {
                 (PreEscaped(html_content))
             }
