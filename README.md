@@ -122,7 +122,7 @@ cargo fmt
 | `src/pages.rs` | Maud SSR templates and URL generation |
 | `src/notes.rs` | Note model and file-system persistence |
 | `src/markdown.rs` | Markdown to HTML with syntax highlighting |
-| `src/syntax.rs` | syntect integration and per-theme tmTheme generation |
+| `src/syntax.rs` | syntect integration and per-theme syntax color scheme generation |
 | `src/themes.rs` | 24 predefined themes and CSS variable engine |
 | `static/style.css` | Full application stylesheet |
 | `static/app.js` | Alpine.js component: preview, search, menus, tabs |
@@ -134,3 +134,4 @@ This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version. See `LICENSE` for the full text.
+

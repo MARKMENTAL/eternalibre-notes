@@ -206,6 +206,7 @@ fn render_menu_bar(base: &Base<'_>) -> Markup {
             // From the manifest, so the title bar and the About page can
             // never disagree. This was a hardcoded "v0.1" that had already
             // drifted from the crate's 0.1.0.
+            // Don't hardcode versions like a dummy!
             span class="app-title" {
                 (format!("EternaLibre Notes v{}", env!("CARGO_PKG_VERSION")))
             }
@@ -490,7 +491,7 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                             }
                         }
                         li {
-                            a href="https://mentalnet.xyz/forgejo-v2/" rel="noopener noreferrer" {
+                            a href="https://mentalnet.xyz/forgejo-v2/MARKMENTAL" rel="noopener noreferrer" {
                                 "Forgejo — mentalnet.xyz"
                             }
                         }
