@@ -8,6 +8,7 @@ function app() {
     // than a set of booleans) makes mutual exclusion automatic: opening Theme
     // while Help is open reassigns this value, so Help's dropdown is hidden.
     openMenu: null,
+    openSubmenu: null,
     _previewTimeout: null,
 
     init() {
@@ -31,10 +32,19 @@ function app() {
 
     toggleMenu(name) {
       this.openMenu = this.openMenu === name ? null : name;
+      this.openSubmenu = null;
+    },
+
+    toggleSubmenu(name, event) {
+      // Stop this click before it reaches the File menu's trigger, which would
+      // otherwise close the whole menu as the submenu opens.
+      event.stopPropagation();
+      this.openSubmenu = this.openSubmenu === name ? null : name;
     },
 
     closeMenus() {
       this.openMenu = null;
+      this.openSubmenu = null;
     },
 
     setTab(name) {

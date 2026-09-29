@@ -151,19 +151,33 @@ impl Fixture {
 
     /// GET carrying the session cookie.
     async fn get_authed(&self, uri: &str) -> (StatusCode, String) {
-        let res = self
-            .app
+        finish(self.get_authed_response(uri, None).await).await
+    }
+
+    async fn get_authed_with_theme(&self, uri: &str, theme: &str) -> axum::response::Response {
+        self.get_authed_response(uri, Some(theme)).await
+    }
+
+    async fn get_authed_response(
+        &self,
+        uri: &str,
+        theme: Option<&str>,
+    ) -> axum::response::Response {
+        let mut cookie = self.cookie_header();
+        if let Some(theme) = theme {
+            cookie.push_str(&format!("; theme={theme}"));
+        }
+        self.app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri(uri)
-                    .header(header::COOKIE, self.cookie_header())
+                    .header(header::COOKIE, cookie)
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
-            .unwrap();
-        finish(res).await
+            .unwrap()
     }
 
     /// POST as an anonymous visitor.
@@ -446,6 +460,158 @@ async fn export_requires_authentication() {
     let (status, body) = f.get("/export").await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     assert!(!body.contains("EternaLibre Notes Export"));
+}
+
+#[tokio::test]
+async fn single_note_export_menu_is_disabled_without_a_selected_note() {
+    let f = Fixture::provisioned("note-export-menu");
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("aria-disabled=\"true\""));
+    assert!(!body.contains("/export/pdf"));
+    assert!(!body.contains("/export/markdown"));
+    assert!(!body.contains("/export/html"));
+
+    let id = f.create_note().await;
+    let (status, selected) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(selected.contains("Print/PDF"));
+    assert!(selected.contains("menu-submenu-list"));
+    for format in ["pdf", "markdown", "html"] {
+        assert!(
+            selected.contains(&format!("href=\"/notes/{id}/export/{format}\"")),
+            "selected note should expose the {format} export"
+        );
+    }
+}
+
+#[tokio::test]
+async fn single_note_exports_require_authentication() {
+    let f = Fixture::provisioned("note-export-gate");
+    let id = f.create_note().await;
+    for format in ["pdf", "markdown", "html"] {
+        let (status, body) = f.get(&format!("/notes/{id}/export/{format}")).await;
+        assert_eq!(status, StatusCode::SEE_OTHER);
+        assert!(!body.contains("Export Secret"));
+    }
+}
+
+#[tokio::test]
+async fn markdown_export_downloads_the_saved_note() {
+    let f = Fixture::provisioned("markdown-export");
+    let id = f.create_note().await;
+    let (status, _, _) = f
+        .post_authed(
+            &format!("/notes/{id}"),
+            "_method=put&title=Saved+Version&content=First+paragraph",
+        )
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let response = f
+        .get_authed_response(&format!("/notes/{id}/export/markdown"), None)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "text/markdown; charset=utf-8"
+    );
+    assert_eq!(
+        response.headers()[header::CONTENT_DISPOSITION],
+        "attachment; filename=\"saved-version.md\""
+    );
+    assert_eq!(
+        response.headers()[header::CACHE_CONTROL],
+        "private, no-store"
+    );
+    let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&body),
+        "# Saved Version\n\nFirst paragraph"
+    );
+}
+
+#[tokio::test]
+async fn html_export_is_standalone_and_uses_the_selected_theme() {
+    let f = Fixture::provisioned("html-export");
+    let id = f.create_note().await;
+    let (status, _, _) = f
+        .post_authed(
+            &format!("/notes/{id}"),
+            "_method=put&title=HTML+Note&content=%23+Heading%0A%0ARendered+body",
+        )
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let response = f
+        .get_authed_with_theme(&format!("/notes/{id}/export/html"), "Dracula")
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_DISPOSITION],
+        "attachment; filename=\"html-note.html\""
+    );
+    let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    let body = String::from_utf8_lossy(&body);
+    assert!(body.contains("data-theme=\"Dracula\""));
+    assert!(body.contains("--app-bg: #282a36;"));
+    assert!(body.contains("<h1 class=\"note-export-title\">HTML Note</h1>"));
+    assert!(body.contains("<h1>Heading</h1>"));
+    assert!(body.contains("<p>Rendered body</p>"));
+    assert!(
+        body.contains(".markdown-body pre"),
+        "application styles are inlined"
+    );
+}
+
+#[tokio::test]
+async fn pdf_export_opens_a_theme_aware_print_document() {
+    let f = Fixture::provisioned("pdf-export");
+    let id = f.create_note().await;
+    let (status, _, _) = f
+        .post_authed(
+            &format!("/notes/{id}"),
+            "_method=put&title=Print+Note&content=Printed+body",
+        )
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let response = f
+        .get_authed_with_theme(&format!("/notes/{id}/export/pdf"), "Breeze Dark")
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "text/html; charset=utf-8"
+    );
+    assert_eq!(
+        response.headers()[header::CONTENT_DISPOSITION],
+        "inline; filename=\"print-note.html\""
+    );
+    let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    let body = String::from_utf8_lossy(&body);
+    assert!(body.contains("data-theme=\"Breeze Dark\""));
+    assert!(body.contains("--app-bg: #232629;"));
+    assert!(body.contains("print-color-adjust: exact;"));
+    assert!(body.contains("window.print()"));
+    assert!(body.contains("Printed body"));
+}
+
+#[tokio::test]
+async fn exporting_a_missing_note_returns_not_found() {
+    let f = Fixture::provisioned("missing-export");
+    for format in ["pdf", "markdown", "html"] {
+        let (status, _) = f
+            .get_authed(&format!("/notes/does-not-exist/export/{format}"))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
 }
 
 #[tokio::test]
@@ -893,6 +1059,23 @@ async fn base_path_prefixes_generated_links() {
         !body.contains("src=\"/static/"),
         "found a root-absolute asset URL that would escape the prefix"
     );
+}
+
+#[tokio::test]
+async fn base_path_prefixes_single_note_export_links() {
+    let f = Fixture::with_base_path("base-note-export", "/forgejo")
+        .login_over_http()
+        .await;
+    let id = f.create_note().await;
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    for format in ["pdf", "markdown", "html"] {
+        assert!(
+            body.contains(&format!("href=\"/forgejo/notes/{id}/export/{format}\"")),
+            "{format} export link should include the base path"
+        );
+    }
 }
 
 #[tokio::test]

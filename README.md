@@ -21,7 +21,8 @@ authenticator app. No telemetry, no accounts, no third-party services.
 - **Works without JavaScript** — note editing, search, theming, and the login form are plain HTML; the menus, mobile tabs, and live preview are the JS-dependent parts
 - **Alpine.js enhancements** — live Markdown preview, instant search, keyboard shortcuts
 - **File-based storage** — notes are persisted as Markdown files in `notes/`
-- **24 built-in themes** — from Dark/Light to Solarized, Dracula, Nord, Monokai, and seasonal palettes
+- **Per-note exports** — download Markdown or self-contained themed HTML, or print/save the themed note as PDF
+- **34 built-in themes** — including KDE Breeze, classic desktop homages, lavender and rose palettes, Solarized, Dracula, and more
 - **Markdown extras** — tables, tasklists, strikethrough, and footnotes via `pulldown-cmark`
 - **Syntax highlighting** — code blocks are highlighted using the current theme's ANSI palette via `syntect`
 - **Mobile responsive** — collapses to a Notes/Write/Preview tab layout on phones, with 44px touch targets
@@ -123,7 +124,7 @@ cargo fmt
 | `src/notes.rs` | Note model and file-system persistence |
 | `src/markdown.rs` | Markdown to HTML with syntax highlighting |
 | `src/syntax.rs` | syntect integration and per-theme syntax color scheme generation |
-| `src/themes.rs` | 24 predefined themes and CSS variable engine |
+| `src/themes.rs` | 34 predefined themes and CSS variable engine |
 | `static/style.css` | Full application stylesheet |
 | `static/app.js` | Alpine.js component: preview, search, menus, tabs |
 | `tests/auth_gating.rs` | End-to-end tests for the TOTP auth gate |
@@ -134,4 +135,3 @@ This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version. See `LICENSE` for the full text.
-

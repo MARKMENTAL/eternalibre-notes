@@ -70,7 +70,7 @@ impl Theme {
     /// any threshold in that gap returns the same answer. That margin is why
     /// this can use the local gamma-encoded `relative_luminance` rather than
     /// the linearised one in `syntax.rs` — for a binary split the two agree
-    /// on all 24 themes, and adding a third implementation would cost more
+    /// on all 34 themes, and adding a third implementation would cost more
     /// than the precision is worth.
     pub fn is_dark(&self) -> bool {
         relative_luminance(self.bg) < 0.5
@@ -101,6 +101,105 @@ fn relative_luminance(hex: &str) -> f64 {
 
 pub static PREDEFINED_THEMES: &[Theme] = &[
     Theme {
+        name: "Amber on Black",
+        fg: "#ffbf00",
+        bg: "#000000",
+        ansi_normal: [
+            "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
+        ],
+        ansi_bright: [
+            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Autumn Forest",
+        fg: "#d4a373",
+        bg: "#3e2723",
+        ansi_normal: [
+            "#3e2723", "#bf360c", "#e65100", "#8d6e63", "#5d4037", "#33691e", "#9e9d24", "#a1887f",
+        ],
+        ansi_bright: [
+            "#6d4c41", "#e64a19", "#f57c00", "#a1887f", "#795548", "#558b2f", "#c0ca33", "#d7ccc8",
+        ],
+    },
+    Theme {
+        name: "Blueberry on Black",
+        fg: "#8ec5fc",
+        bg: "#000000",
+        ansi_normal: [
+            "#000000", "#0d47a1", "#1565c0", "#1976d2", "#1e88e5", "#42a5f5", "#64b5f6", "#90caf9",
+        ],
+        ansi_bright: [
+            "#37474f", "#1e88e5", "#42a5f5", "#64b5f6", "#90caf9", "#bbdefb", "#e3f2fd", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Breeze",
+        fg: "#232629",
+        bg: "#eff0f1",
+        ansi_normal: [
+            "#eff0f1", "#b00020", "#2e7d32", "#8a5a00", "#1d5f91", "#8e44ad", "#007f7f", "#232629",
+        ],
+        ansi_bright: [
+            "#7f8c8d", "#a31515", "#256d2a", "#805400", "#0067c0", "#7b2e9a", "#006b6b", "#111111",
+        ],
+    },
+    Theme {
+        name: "Breeze Dark",
+        fg: "#eff0f1",
+        bg: "#232629",
+        ansi_normal: [
+            "#232629", "#f07178", "#8bd49c", "#e5c07b", "#3daee9", "#c792ea", "#56b6c2", "#d8dee9",
+        ],
+        ansi_bright: [
+            "#697078", "#ff7a85", "#a3e6b1", "#f2cc8f", "#61c5f0", "#d6a8f5", "#70d0db", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Chartreuse on Black",
+        fg: "#7fff00",
+        bg: "#000000",
+        ansi_normal: [
+            "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
+        ],
+        ansi_bright: [
+            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Classic Windows 95",
+        fg: "#111111",
+        bg: "#c0c0c0",
+        ansi_normal: [
+            "#c0c0c0", "#800000", "#006400", "#806000", "#000080", "#800080", "#008080", "#111111",
+        ],
+        ansi_bright: [
+            "#808080", "#c00000", "#008000", "#9a6700", "#004e98", "#9a4e9a", "#008b8b", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Cyan on Black",
+        fg: "#00ffff",
+        bg: "#000000",
+        ansi_normal: [
+            "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
+        ],
+        ansi_bright: [
+            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Cyberpunk 2077",
+        fg: "#f9f227",
+        bg: "#0d0d0d",
+        ansi_normal: [
+            "#0d0d0d", "#ff0055", "#00ff41", "#f9f227", "#00b8ff", "#ff00cc", "#00ffff", "#f9f227",
+        ],
+        ansi_bright: [
+            "#333333", "#ff3377", "#33ff66", "#ffff33", "#33ccff", "#ff33ff", "#33ffff", "#ffff66",
+        ],
+    },
+    Theme {
         name: "Dark",
         fg: "#d0d0d0",
         bg: "#1c1c1c",
@@ -112,39 +211,6 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
-        name: "Light",
-        fg: "#1c1c1c",
-        bg: "#d0d0d0",
-        ansi_normal: [
-            "#1c1c1c", "#c50f1f", "#23a523", "#b58900", "#268bd2", "#d33682", "#2aa198", "#d0d0d0",
-        ],
-        ansi_bright: [
-            "#666666", "#ff6666", "#66ff66", "#ffff66", "#6666ff", "#ff66ff", "#66ffff", "#ffffff",
-        ],
-    },
-    Theme {
-        name: "Solarized Dark",
-        fg: "#839496",
-        bg: "#002b36",
-        ansi_normal: [
-            "#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5",
-        ],
-        ansi_bright: [
-            "#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3",
-        ],
-    },
-    Theme {
-        name: "Solarized Light",
-        fg: "#657b83",
-        bg: "#fdf6e3",
-        ansi_normal: [
-            "#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5",
-        ],
-        ansi_bright: [
-            "#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3",
-        ],
-    },
-    Theme {
         name: "Dracula",
         fg: "#f8f8f2",
         bg: "#282a36",
@@ -153,6 +219,17 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
         ansi_bright: [
             "#6272a4", "#ff6e6e", "#69ff94", "#ffffa5", "#d6acff", "#ff92df", "#a4ffff", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Foggy Morning",
+        fg: "#cfd8dc",
+        bg: "#455a64",
+        ansi_normal: [
+            "#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1",
+        ],
+        ansi_bright: [
+            "#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1", "#f5f5f5", "#ffffff",
         ],
     },
     Theme {
@@ -178,80 +255,25 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
-        name: "Nord",
-        fg: "#d8dee9",
-        bg: "#2e3440",
+        name: "Light",
+        fg: "#1c1c1c",
+        bg: "#d0d0d0",
         ansi_normal: [
-            "#3b4252", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#88c0d0", "#e5e9f0",
+            "#1c1c1c", "#c50f1f", "#23a523", "#b58900", "#268bd2", "#d33682", "#2aa198", "#d0d0d0",
         ],
         ansi_bright: [
-            "#4c566a", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#8fbcbb", "#eceff4",
+            "#666666", "#ff6666", "#66ff66", "#ffff66", "#6666ff", "#ff66ff", "#66ffff", "#ffffff",
         ],
     },
     Theme {
-        name: "Monokai",
-        fg: "#f8f8f2",
-        bg: "#272822",
+        name: "Lilac Paper",
+        fg: "#302b3d",
+        bg: "#f4f0fa",
         ansi_normal: [
-            "#272822", "#f92672", "#a6e22e", "#f4bf75", "#66d9ef", "#ae81ff", "#a1efe4", "#f8f8f2",
+            "#f4f0fa", "#a33a58", "#3d7553", "#856000", "#584c9d", "#814f91", "#287781", "#302b3d",
         ],
         ansi_bright: [
-            "#75715e", "#f92672", "#a6e22e", "#e6db74", "#66d9ef", "#ae81ff", "#a1efe4", "#f9f8f5",
-        ],
-    },
-    Theme {
-        name: "Tokyo Night",
-        fg: "#c0caf5",
-        bg: "#1a1b26",
-        ansi_normal: [
-            "#15161e", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#a9b1d6",
-        ],
-        ansi_bright: [
-            "#414868", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#c0caf5",
-        ],
-    },
-    Theme {
-        name: "One Dark",
-        fg: "#abb2bf",
-        bg: "#282c34",
-        ansi_normal: [
-            "#282c34", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#abb2bf",
-        ],
-        ansi_bright: [
-            "#5c6370", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#ffffff",
-        ],
-    },
-    Theme {
-        name: "Cyberpunk 2077",
-        fg: "#f9f227",
-        bg: "#0d0d0d",
-        ansi_normal: [
-            "#0d0d0d", "#ff0055", "#00ff41", "#f9f227", "#00b8ff", "#ff00cc", "#00ffff", "#f9f227",
-        ],
-        ansi_bright: [
-            "#333333", "#ff3377", "#33ff66", "#ffff33", "#33ccff", "#ff33ff", "#33ffff", "#ffff66",
-        ],
-    },
-    Theme {
-        name: "Cyan on Black",
-        fg: "#00ffff",
-        bg: "#000000",
-        ansi_normal: [
-            "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
-        ],
-        ansi_bright: [
-            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
-        ],
-    },
-    Theme {
-        name: "Red on Black",
-        fg: "#ff0000",
-        bg: "#000000",
-        ansi_normal: [
-            "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
-        ],
-        ansi_bright: [
-            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
+            "#89829a", "#96334f", "#2d704a", "#755500", "#5d468f", "#713f83", "#176c74", "#211a2a",
         ],
     },
     Theme {
@@ -266,8 +288,63 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
-        name: "Chartreuse on Black",
-        fg: "#7fff00",
+        name: "Monokai",
+        fg: "#f8f8f2",
+        bg: "#272822",
+        ansi_normal: [
+            "#272822", "#f92672", "#a6e22e", "#f4bf75", "#66d9ef", "#ae81ff", "#a1efe4", "#f8f8f2",
+        ],
+        ansi_bright: [
+            "#75715e", "#f92672", "#a6e22e", "#e6db74", "#66d9ef", "#ae81ff", "#a1efe4", "#f9f8f5",
+        ],
+    },
+    Theme {
+        name: "Nord",
+        fg: "#d8dee9",
+        bg: "#2e3440",
+        ansi_normal: [
+            "#3b4252", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#88c0d0", "#e5e9f0",
+        ],
+        ansi_bright: [
+            "#4c566a", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#8fbcbb", "#eceff4",
+        ],
+    },
+    Theme {
+        name: "One Dark",
+        fg: "#abb2bf",
+        bg: "#282c34",
+        ansi_normal: [
+            "#282c34", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#abb2bf",
+        ],
+        ansi_bright: [
+            "#5c6370", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Orchid Noir",
+        fg: "#f3eaf8",
+        bg: "#110b18",
+        ansi_normal: [
+            "#110b18", "#ff6b9b", "#8fe0b0", "#f4cf78", "#b775f2", "#ff66b3", "#65d7dc", "#f3eaf8",
+        ],
+        ansi_bright: [
+            "#685d70", "#ff8ab0", "#a7ecc1", "#ffdf96", "#c78df7", "#ff86c3", "#82e7eb", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Platinum Desktop",
+        fg: "#242424",
+        bg: "#d6d6d6",
+        ansi_normal: [
+            "#d6d6d6", "#a33a3a", "#3d6b45", "#8a6200", "#336699", "#78508a", "#287d78", "#242424",
+        ],
+        ansi_bright: [
+            "#777777", "#8f1d1d", "#2f6a38", "#765000", "#225a91", "#6b3f7e", "#176963", "#101010",
+        ],
+    },
+    Theme {
+        name: "Red on Black",
+        fg: "#ff0000",
         bg: "#000000",
         ansi_normal: [
             "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
@@ -277,25 +354,36 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
-        name: "Amber on Black",
-        fg: "#ffbf00",
-        bg: "#000000",
+        name: "Rose Quartz",
+        fg: "#3a2630",
+        bg: "#fff1f4",
         ansi_normal: [
-            "#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc",
+            "#fff1f4", "#a52a4e", "#39724a", "#856000", "#b83f68", "#853f78", "#176f76", "#3a2630",
         ],
         ansi_bright: [
-            "#666666", "#ff0000", "#00ff00", "#ffff00", "#a9a9f9", "#ff00ff", "#00ffff", "#ffffff",
+            "#8b7b84", "#922243", "#2e653e", "#795400", "#9b3157", "#713365", "#0d646b", "#25171d",
         ],
     },
     Theme {
-        name: "Blueberry on Black",
-        fg: "#8ec5fc",
-        bg: "#000000",
+        name: "Solarized Dark",
+        fg: "#839496",
+        bg: "#002b36",
         ansi_normal: [
-            "#000000", "#0d47a1", "#1565c0", "#1976d2", "#1e88e5", "#42a5f5", "#64b5f6", "#90caf9",
+            "#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5",
         ],
         ansi_bright: [
-            "#37474f", "#1e88e5", "#42a5f5", "#64b5f6", "#90caf9", "#bbdefb", "#e3f2fd", "#ffffff",
+            "#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3",
+        ],
+    },
+    Theme {
+        name: "Solarized Light",
+        fg: "#657b83",
+        bg: "#fdf6e3",
+        ansi_normal: [
+            "#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5",
+        ],
+        ansi_bright: [
+            "#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3",
         ],
     },
     Theme {
@@ -310,6 +398,17 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
+        name: "Stormy Night",
+        fg: "#b0bec5",
+        bg: "#263238",
+        ansi_normal: [
+            "#263238", "#37474f", "#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5",
+        ],
+        ansi_bright: [
+            "#455a64", "#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1", "#ffffff",
+        ],
+    },
+    Theme {
         name: "Summer Sunset",
         fg: "#ff9a5a",
         bg: "#1a1a2e",
@@ -321,14 +420,47 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
-        name: "Autumn Forest",
-        fg: "#d4a373",
-        bg: "#3e2723",
+        name: "Tokyo Night",
+        fg: "#c0caf5",
+        bg: "#1a1b26",
         ansi_normal: [
-            "#3e2723", "#bf360c", "#e65100", "#8d6e63", "#5d4037", "#33691e", "#9e9d24", "#a1887f",
+            "#15161e", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#a9b1d6",
         ],
         ansi_bright: [
-            "#6d4c41", "#e64a19", "#f57c00", "#a1887f", "#795548", "#558b2f", "#c0ca33", "#d7ccc8",
+            "#414868", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#c0caf5",
+        ],
+    },
+    Theme {
+        name: "Velvet Dusk",
+        fg: "#eae1f2",
+        bg: "#1c1422",
+        ansi_normal: [
+            "#1c1422", "#f0718a", "#91d39b", "#e8c27a", "#ab82d3", "#d08acb", "#70c9c4", "#eae1f2",
+        ],
+        ansi_bright: [
+            "#63586b", "#ff8299", "#a6e6af", "#f2d08c", "#c19ae8", "#e1a0dc", "#83ddd6", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Vista Aero",
+        fg: "#eaf4fb",
+        bg: "#14263a",
+        ansi_normal: [
+            "#14263a", "#ff6b7a", "#8fe3b2", "#ffd27a", "#53b8f2", "#ce9eff", "#67dce3", "#eaf4fb",
+        ],
+        ansi_bright: [
+            "#697f96", "#ff8793", "#a4eac1", "#ffdda0", "#62c8ff", "#d9b4ff", "#7ae8ed", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Windows XP",
+        fg: "#1c2a3a",
+        bg: "#eaf2fa",
+        ansi_normal: [
+            "#eaf2fa", "#a52222", "#247a35", "#886000", "#245edc", "#873b80", "#007984", "#1c2a3a",
+        ],
+        ansi_bright: [
+            "#7b8794", "#8f1d1d", "#216b2f", "#765000", "#245edc", "#71316b", "#006b74", "#111820",
         ],
     },
     Theme {
@@ -342,35 +474,18 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
             "#283593", "#00897b", "#00acc1", "#26c6da", "#4dd0e1", "#80deea", "#b2ebf2", "#ffffff",
         ],
     },
-    Theme {
-        name: "Stormy Night",
-        fg: "#b0bec5",
-        bg: "#263238",
-        ansi_normal: [
-            "#263238", "#37474f", "#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5",
-        ],
-        ansi_bright: [
-            "#455a64", "#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1", "#ffffff",
-        ],
-    },
-    Theme {
-        name: "Foggy Morning",
-        fg: "#cfd8dc",
-        bg: "#455a64",
-        ansi_normal: [
-            "#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1",
-        ],
-        ansi_bright: [
-            "#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1", "#f5f5f5", "#ffffff",
-        ],
-    },
 ];
 
 pub fn get_theme(name: &str) -> &'static Theme {
     PREDEFINED_THEMES
         .iter()
         .find(|t| t.name == name)
-        .unwrap_or(&PREDEFINED_THEMES[0])
+        .unwrap_or_else(|| {
+            PREDEFINED_THEMES
+                .iter()
+                .find(|theme| theme.name == "Dark")
+                .expect("the default Dark theme must be present")
+        })
 }
 
 #[cfg(test)]
@@ -426,8 +541,41 @@ mod tests {
         // Dropping a palette shrinks the Theme menu, so the docs and the
         // about page count have to move with it. This assertion caught the
         // count being wrong in the docs before this change: they claimed 28
-        // for what was really 25.
-        assert_eq!(PREDEFINED_THEMES.len(), 24);
+        // for what was really 24.
+        assert_eq!(PREDEFINED_THEMES.len(), 34);
+    }
+
+    #[test]
+    fn breeze_variants_are_a_light_dark_pair() {
+        let light = get_theme("Breeze");
+        let dark = get_theme("Breeze Dark");
+
+        assert!(!light.is_dark());
+        assert!(dark.is_dark());
+        assert_eq!(light.ansi_bright[4], "#0067c0");
+        assert_eq!(dark.ansi_normal[4], "#3daee9");
+    }
+
+    #[test]
+    fn lavender_and_rose_themes_cover_light_and_dark_modes() {
+        assert!(!get_theme("Lilac Paper").is_dark());
+        assert!(!get_theme("Rose Quartz").is_dark());
+        assert!(get_theme("Velvet Dusk").is_dark());
+        assert!(get_theme("Orchid Noir").is_dark());
+        assert_eq!(get_theme("Rose Quartz").ansi_bright[4], "#9b3157");
+        assert_eq!(get_theme("Orchid Noir").ansi_bright[5], "#ff86c3");
+    }
+
+    #[test]
+    fn theme_names_are_alphabetical() {
+        let names: Vec<String> = PREDEFINED_THEMES
+            .iter()
+            .map(|theme| theme.name.to_lowercase())
+            .collect();
+        assert!(
+            names.windows(2).all(|pair| pair[0] <= pair[1]),
+            "theme names should be alphabetized"
+        );
     }
 
     #[test]

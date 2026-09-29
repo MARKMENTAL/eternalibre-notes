@@ -68,7 +68,7 @@ pub fn render_app(
                 script defer src=(base.url("/static/alpine.min.js")) {}
             }
             body x-data="app()" x-on:keydown="handleKeydown($event)" {
-                (render_menu_bar(base))
+                (render_menu_bar(base, current_note))
                 (render_toolbar(current_note, query, theme_name, base))
                 @if let Some(msg) = message {
                     div class="flash-message" { (msg) }
@@ -130,7 +130,7 @@ fn render_tab_bar(default_tab: &str) -> Markup {
     }
 }
 
-fn render_menu_bar(base: &Base<'_>) -> Markup {
+fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>) -> Markup {
     html! {
         nav class="menu-bar" {
             ul class="menu-list" {
@@ -138,7 +138,7 @@ fn render_menu_bar(base: &Base<'_>) -> Markup {
                     x-on:click="toggleMenu('file')"
                     x-bind:class="{ 'open': openMenu === 'file' }" {
                     span { "File" }
-                    ul class="menu-dropdown" {
+                    ul class="menu-dropdown file-menu-dropdown" {
                         li {
                             form action=(base.url("/notes")) method="post" {
                                 button type="submit" { "New Note" }
@@ -147,6 +147,37 @@ fn render_menu_bar(base: &Base<'_>) -> Markup {
                         li { hr; }
                         li {
                             a href=(base.url("/export")) { "Export All Notes" }
+                        }
+                        li class="menu-submenu" {
+                            @if let Some(note) = current_note {
+                                button type="button" class="menu-submenu-trigger"
+                                    x-on:click="toggleSubmenu('noteExport', $event)"
+                                    x-bind:aria-expanded="openSubmenu === 'noteExport'" {
+                                    "Export Note As…"
+                                    span class="submenu-chevron" aria-hidden="true" { "›" }
+                                }
+                                ul class="menu-submenu-list"
+                                    x-bind:class="{ 'open': openSubmenu === 'noteExport' }" {
+                                    li {
+                                        a href=(base.url(&format!("/notes/{}/export/pdf", note.id))) {
+                                            "Print/PDF"
+                                        }
+                                    }
+                                    li {
+                                        a href=(base.url(&format!("/notes/{}/export/markdown", note.id))) {
+                                            "Markdown"
+                                        }
+                                    }
+                                    li {
+                                        a href=(base.url(&format!("/notes/{}/export/html", note.id))) {
+                                            "HTML"
+                                        }
+                                    }
+                                }
+                            } @else {
+                                button type="button" class="menu-submenu-trigger" disabled
+                                    aria-disabled="true" { "Export Note As…" }
+                            }
                         }
                     }
                 }
@@ -387,6 +418,67 @@ pub fn render_preview_fragment(html_content: &str) -> Markup {
     }
 }
 
+/// Renders a self-contained, theme-aware note document for HTML download or
+/// the browser's print-to-PDF flow.
+pub fn render_note_export(
+    note: &Note,
+    theme: &crate::themes::Theme,
+    print_on_load: bool,
+) -> Markup {
+    let rendered = render_markdown(&note.content, theme);
+    html! {
+        (DOCTYPE)
+        html lang="en" data-theme=(theme.name) {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1";
+                title { (note.title) }
+                style { (PreEscaped(theme.to_css_block())) }
+                style { (PreEscaped(include_str!("../static/style.css"))) }
+                style {
+                    (PreEscaped(r#"
+                        html, body { height: auto; min-height: 100%; }
+                        body { display: block; height: auto; min-height: 100vh; overflow: auto; }
+                        .note-export { max-width: 900px; margin: 0 auto; padding: 48px; }
+                        .note-export-title { margin: 0 0 28px; overflow-wrap: anywhere; }
+                        @media print {
+                          @page { margin: 18mm; }
+                          html, body {
+                            height: auto;
+                            min-height: 0;
+                            background-color: var(--app-bg) !important;
+                            color: var(--app-fg) !important;
+                            print-color-adjust: exact;
+                            -webkit-print-color-adjust: exact;
+                          }
+                          body { display: block; overflow: visible; }
+                          .note-export { max-width: none; margin: 0; padding: 0; }
+                          .note-export-title { break-after: avoid-page; }
+                          .markdown-body pre {
+                            overflow: visible;
+                            white-space: pre-wrap;
+                            overflow-wrap: anywhere;
+                          }
+                          .markdown-body pre, .markdown-body blockquote,
+                          .markdown-body table { break-inside: avoid; }
+                          .markdown-body a { color: inherit; text-decoration: none; }
+                        }
+                    "#))
+                }
+            }
+            body class="note-export-page" {
+                main class="note-export" {
+                    h1 class="note-export-title" { (note.title) }
+                    div class="markdown-body" { (PreEscaped(rendered)) }
+                }
+                @if print_on_load {
+                    script { "window.addEventListener('load', () => window.print());" }
+                }
+            }
+        }
+    }
+}
+
 /// Renders the `/login` page.
 ///
 /// TOTP enrolment lives in the terminal (`setup::run_interactive_setup`) and
@@ -462,7 +554,7 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                 style { (PreEscaped(include_str!("../static/style.css"))) }
             }
             body class="about-page" {
-                (render_menu_bar(base))
+                (render_menu_bar(base, None))
                 main {
                     h1 { "EternaLibre Notes" }
                     p class="tagline" { "Free notes, forever." }
@@ -480,11 +572,11 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                         // Counted from the palette itself, and split by
                         // background luminance. This number used to be
                         // hardcoded and had drifted to "28" for what was
-                        // really 25 themes.
+                        // really 24 themes.
                         li {
                             (format!(
                                 "{} built-in themes ({} dark, {} light) with a full \
-                                 ANSI palette — Solarized, Dracula, Nord, Monokai, and more",
+                                 ANSI palette — Solarized, Dracula, KDE Breeze, Lilac Paper, and more",
                                 themes.len(),
                                 dark_themes,
                                 themes.len() - dark_themes,
@@ -494,6 +586,7 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                         li { "Notes stored as plain Markdown files on disk" }
                         li { "TOTP-locked, with no accounts or third-party services" }
                         li { "Note editing, search, and theming work without JavaScript" }
+                        li { "Export saved notes as Markdown, themed HTML, or PDF via the browser print dialog" }
                     }
                     h2 { "Author" }
                     ul class="about-links" {

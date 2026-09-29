@@ -86,7 +86,7 @@ button, input, select, textarea {
   top: calc(100% - 4px);
   left: 0;
   min-width: 180px;
-  /* The Theme menu has 24 entries; cap the height so it cannot run off
+  /* The Theme menu has 34 entries; cap the height so it cannot run off
      the bottom of the viewport (body has overflow: hidden). */
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
@@ -100,6 +100,14 @@ button, input, select, textarea {
   margin: 0;
   padding: 12px 6px 6px;
   z-index: 100;
+}
+
+/* The File menu is short, so let its flyout escape horizontally instead of
+   letting the generic scroll container clip it. The nested flyout handles its
+   own vertical scrolling near the bottom edge of the viewport. */
+.menu-dropdown.file-menu-dropdown {
+  max-height: none;
+  overflow: visible;
 }
 
 .menu-dropdown li {
@@ -137,6 +145,61 @@ button, input, select, textarea {
   border: none;
   border-top: 1px solid var(--ui-border);
   margin: 6px 0;
+}
+
+.menu-submenu-trigger {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.menu-submenu-trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.menu-dropdown .menu-submenu-trigger:disabled:hover {
+  background: none;
+}
+
+.submenu-chevron {
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0.65;
+}
+
+.menu-submenu {
+  position: relative;
+}
+
+.menu-submenu-list {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: calc(100% - 2px);
+  z-index: 101;
+  min-width: 180px;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background-color: var(--app-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+}
+
+.menu-submenu-list.open {
+  display: block;
+}
+
+.menu-dropdown .menu-submenu-list a {
+  padding-left: 10px;
+  font-size: 12px;
 }
 
 .app-title {
@@ -854,6 +917,13 @@ button, input, select, textarea {
   .menu-dropdown {
     max-width: calc(100vw - 16px);
     max-height: 55dvh;
+  }
+
+  .menu-submenu-list {
+    width: calc(100vw - 205px);
+    min-width: 120px;
+    max-width: 180px;
+    max-height: calc(100dvh - 56px);
   }
 
   .app-title {

@@ -122,6 +122,12 @@ pub fn router(state: AppState) -> Router {
         .route("/theme", post(theme_route))
         .route("/about", get(about_route))
         .route("/export", get(export_route))
+        .route(
+            "/notes/:id/export/markdown",
+            get(export_note_markdown_route),
+        )
+        .route("/notes/:id/export/html", get(export_note_html_route))
+        .route("/notes/:id/export/pdf", get(export_note_pdf_route))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     public.merge(protected).with_state(state)
@@ -469,6 +475,92 @@ async fn export_route(_headers: HeaderMap) -> Result<impl IntoResponse, AppError
             .unwrap(),
     );
     Ok(response)
+}
+
+async fn export_note_markdown_route(Path(id): Path<String>) -> Result<impl IntoResponse, AppError> {
+    let note = notes::load_note(&id)?;
+    let markdown = format!("# {}\n\n{}", note.title.replace('\n', " "), note.content);
+    let filename = note_export_filename(&note, "md");
+    Ok(note_export_response(
+        markdown.into_response(),
+        "text/markdown; charset=utf-8",
+        &filename,
+        "attachment",
+    ))
+}
+
+async fn export_note_html_route(
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let note = notes::load_note(&id)?;
+    let theme = get_theme(&get_theme_from_cookie(&headers));
+    let html = pages::render_note_export(&note, theme, false).into_string();
+    let filename = note_export_filename(&note, "html");
+    Ok(note_export_response(
+        Html(html).into_response(),
+        "text/html; charset=utf-8",
+        &filename,
+        "attachment",
+    ))
+}
+
+async fn export_note_pdf_route(
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let note = notes::load_note(&id)?;
+    let theme = get_theme(&get_theme_from_cookie(&headers));
+    // The browser's print dialog can save this styled document as PDF without
+    // a separate renderer, while preserving the selected theme and CSS.
+    let html = pages::render_note_export(&note, theme, true).into_string();
+    let filename = note_export_filename(&note, "html");
+    Ok(note_export_response(
+        Html(html).into_response(),
+        "text/html; charset=utf-8",
+        &filename,
+        "inline",
+    ))
+}
+
+fn note_export_filename(note: &Note, extension: &str) -> String {
+    let mut slug = String::new();
+    let mut separator = false;
+    for ch in note.title.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if separator && !slug.is_empty() {
+                slug.push('-');
+            }
+            slug.push(ch.to_ascii_lowercase());
+            separator = false;
+        } else {
+            separator = true;
+        }
+        if slug.len() >= 80 {
+            break;
+        }
+    }
+    let slug = slug.trim_end_matches('-');
+    let stem = if slug.is_empty() { "note" } else { slug };
+    format!("{stem}.{extension}")
+}
+
+fn note_export_response(
+    mut response: Response,
+    content_type: &str,
+    filename: &str,
+    disposition: &str,
+) -> Response {
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        format!("{disposition}; filename=\"{filename}\"")
+            .parse()
+            .unwrap(),
+    );
+    headers.insert(header::CACHE_CONTROL, "private, no-store".parse().unwrap());
+    response
 }
 
 #[derive(Debug)]
