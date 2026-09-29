@@ -103,14 +103,6 @@ cargo clippy -- -D warnings
 cargo fmt
 ```
 
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl/Cmd + N` | Create a new note |
-| `Ctrl/Cmd + S` | Save the current note |
-| `Escape` | Close any open menu |
-
 ## Project Structure
 
 | Path | Purpose |
