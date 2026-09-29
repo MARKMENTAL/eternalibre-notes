@@ -63,6 +63,19 @@ impl Theme {
         )
     }
 
+    /// True when the background is dark enough that light text reads on it.
+    ///
+    /// The shipped palettes are strongly bimodal: the lightest *dark*
+    /// background scores 0.095 and the darkest *light* one scores 0.63, so
+    /// any threshold in that gap returns the same answer. That margin is why
+    /// this can use the local gamma-encoded `relative_luminance` rather than
+    /// the linearised one in `syntax.rs` — for a binary split the two agree
+    /// on all 24 themes, and adding a third implementation would cost more
+    /// than the precision is worth.
+    pub fn is_dark(&self) -> bool {
+        relative_luminance(self.bg) < 0.5
+    }
+
     fn button_colors(&self, accent: usize) -> (&'static str, &'static str) {
         // Use the bright variant of the accent color if it has decent luminance;
         // otherwise fall back to the theme foreground color so text remains readable.

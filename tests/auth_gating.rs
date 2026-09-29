@@ -650,6 +650,160 @@ async fn theme_cookie_alongside_session_still_works() {
     assert!(String::from_utf8_lossy(&bytes).contains("data-theme=\"Dracula\""));
 }
 
+// ----------------------------------------------------------- about page ----
+
+/// The about page's mobile styling hangs entirely off this one class.
+///
+/// `style.css` turns `.back-link` into a full-width 44px touch target on
+/// mobile, matching the HIG minimum the rest of the app enforces. Drop the
+/// class and the only way off the page silently reverts to a ~13px text
+/// link — which is exactly the "assumes a desktop view" problem it was
+/// added to fix. The heading rule is anchored on `main > h1` and so needs
+/// no class, but the link does.
+#[tokio::test]
+async fn about_page_back_link_is_styled() {
+    let f = Fixture::fresh("about-link").login_over_http().await;
+    let (status, body) = f.get_authed("/about").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains(r#"class="back-link""#),
+        "about page is missing the back-link class that style.css targets"
+    );
+    assert!(
+        body.contains("Back to notes"),
+        "about page should still offer a way back"
+    );
+}
+
+/// The about page is a separate document from the app shell, so it inlines
+/// `style.css` itself. If that inlining were dropped, every mobile rule
+/// would be dead on this page specifically.
+#[tokio::test]
+async fn about_page_inlines_the_stylesheet() {
+    let f = Fixture::fresh("about-css").login_over_http().await;
+    let (status, body) = f.get_authed("/about").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains(".about-page main > h1"),
+        "about page should inline the stylesheet that styles it"
+    );
+    // Match the full selector, not just the class name. A substring check on
+    // `.back-link` also matches `.back-link-foo`, which is how this test
+    // passed the first time it was run against a deliberately broken sheet.
+    assert!(
+        body.contains(".about-page .back-link {"),
+        "the inlined sheet should carry the back-link rules"
+    );
+}
+
+/// Every screen must declare a viewport, or mobile browsers fall back to a
+/// ~980px layout viewport and scale the whole page down.
+///
+/// That silently disables every `@media (max-width: 600px)` rule in the
+/// stylesheet, so a screen can carry a full set of mobile rules and still
+/// render the desktop layout — which is exactly what happened to `/about`.
+/// The failure is invisible in a desktop browser and invisible to any test
+/// that only asserts the CSS was inlined, which is why it is pinned here
+/// per-screen rather than once.
+#[tokio::test]
+async fn every_screen_declares_a_viewport() {
+    let f = Fixture::fresh("viewport").login_over_http().await;
+    for path in ["/", "/about"] {
+        let (status, body) = f.get_authed(path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(
+            body.contains(r#"name="viewport""#)
+                && body.contains(r#"content="width=device-width, initial-scale=1"#),
+            "{path} is missing a viewport meta tag; mobile will scale it down \
+             and none of the max-width media queries will match"
+        );
+    }
+}
+
+/// The about page advertises a version, and it must be the one in
+/// `Cargo.toml`.
+///
+/// The title bar used to carry a hand-written `"v0.1"` that had already
+/// drifted from the crate's `0.1.0`. Both now read `CARGO_PKG_VERSION`, so
+/// this pins that they agree with the manifest rather than with each other.
+#[tokio::test]
+async fn about_page_reports_the_manifest_version() {
+    let f = Fixture::fresh("about-version").login_over_http().await;
+    let (status, body) = f.get_authed("/about").await;
+    assert_eq!(status, StatusCode::OK);
+
+    let version = env!("CARGO_PKG_VERSION");
+    assert!(
+        body.contains(&format!("Version {version}")),
+        "about page should report version {version}"
+    );
+    // The title bar must show the same string, not a separately maintained one.
+    let (shell_status, shell) = f.get_authed("/").await;
+    assert_eq!(shell_status, StatusCode::OK);
+    assert!(
+        shell.contains(&format!("EternaLibre Notes v{version}")),
+        "title bar should show v{version} from the manifest"
+    );
+}
+
+/// The theme counts are derived from the palette, not typed in. If someone
+/// adds or removes a theme, this keeps the page honest without a manual edit.
+#[tokio::test]
+async fn about_page_theme_counts_come_from_the_palette() {
+    use eternalibre_notes::themes::PREDEFINED_THEMES;
+
+    let total = PREDEFINED_THEMES.len();
+    let dark = PREDEFINED_THEMES.iter().filter(|t| t.is_dark()).count();
+    let light = total - dark;
+
+    let f = Fixture::fresh("about-themes").login_over_http().await;
+    let (status, body) = f.get_authed("/about").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains(&format!(
+            "{total} built-in themes ({dark} dark, {light} light)"
+        )),
+        "about page should report {total} themes split {dark} dark / {light} light"
+    );
+}
+
+/// Outbound links must carry `rel="noopener noreferrer"`. The app advertises
+/// that it never talks to a third party, and these are the only links that
+/// leave the machine, so they should not leak a referrer when followed.
+#[tokio::test]
+async fn about_page_external_links_are_hardened() {
+    let f = Fixture::fresh("about-links").login_over_http().await;
+    let (status, body) = f.get_authed("/about").await;
+    assert_eq!(status, StatusCode::OK);
+
+    for target in [
+        "https://github.com/MARKMENTAL",
+        "https://mentalnet.xyz/forgejo-v2/",
+        "https://github.com/MARKMENTAL/tuxdock",
+        "https://github.com/MARKMENTAL/mentalnet-gnu-linux",
+    ] {
+        assert!(body.contains(target), "about page should link to {target}");
+    }
+
+    // Check every external anchor, so a link added later without the
+    // hardening attributes fails here instead of shipping quietly.
+    let externals: Vec<&str> = body
+        .match_indices("<a href=\"https://")
+        .map(|(i, _)| &body[i..])
+        .collect();
+    assert!(
+        !externals.is_empty(),
+        "expected external links on the about page"
+    );
+    for a in externals {
+        let tag = &a[..a.find('>').expect("unterminated anchor")];
+        assert!(
+            tag.contains(r#"rel="noopener noreferrer""#),
+            "external link missing rel hardening: {tag}"
+        );
+    }
+}
+
 // ------------------------------------------------------------- base path ----
 
 /// Every generated URL must carry the base prefix, or a browser behind the

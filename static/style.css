@@ -86,7 +86,7 @@ button, input, select, textarea {
   top: calc(100% - 4px);
   left: 0;
   min-width: 180px;
-  /* The Theme menu has 28 entries; cap the height so it cannot run off
+  /* The Theme menu has 24 entries; cap the height so it cannot run off
      the bottom of the viewport (body has overflow: hidden). */
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
@@ -705,6 +705,65 @@ button, input, select, textarea {
   overflow-y: auto;
 }
 
+/* The about page was the one screen in the app with no typography rules at
+   all, so it rendered at UA defaults: a 2em heading with 0.67em margins and
+   a 1.9 line-height feature list. That is what made it read as a desktop
+   page on a phone. */
+.about-page main > h1 {
+  font-size: 26px;
+  line-height: 1.2;
+  margin: 0 0 4px;
+  /* Balances a wrapped title instead of leaving a ragged last line. */
+  text-wrap: balance;
+}
+
+.about-page main > p {
+  line-height: 1.6;
+}
+
+.about-page main > h2 {
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.6;
+  margin: 28px 0 10px;
+}
+
+/* Outbound links. Kept as a list rather than prose so each destination reads
+   as its own target, and so the mobile 44px touch-target rule can apply to
+   the whole row. */
+.about-links {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+}
+
+.about-links li {
+  margin: 0;
+}
+
+.about-links a {
+  display: block;
+  padding: 8px 12px;
+  margin: 0 -12px;
+  border-radius: 6px;
+  font-size: 15px;
+  transition: background-color 0.15s ease;
+}
+
+.about-links a:hover {
+  background-color: var(--ui-hover);
+  text-decoration: none;
+}
+
+/* Sits last and stays muted; it is a colophon, not a call to action. */
+.about-page .about-colophon {
+  font-size: 13px;
+  opacity: 0.7;
+  margin: 28px 0 20px;
+}
+
 .about-page .tagline {
   font-size: 18px;
   font-weight: 600;
@@ -716,6 +775,23 @@ button, input, select, textarea {
   margin: 0 0 20px;
   padding-left: 22px;
   line-height: 1.9;
+}
+
+/* "Back to notes" is the only way off this screen, so it gets a real target
+   rather than bare link text. */
+.about-page .back-link {
+  display: inline-block;
+  padding: 8px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.about-page .back-link:hover {
+  background-color: var(--ui-hover);
+  text-decoration: none;
 }
 
 /* Mobile Tab Bar — hidden on desktop */
@@ -955,7 +1031,51 @@ button, input, select, textarea {
     flex-shrink: 0;
   }
 
+  /* About page. Without these it keeps the desktop reading measure: a 26px
+     heading, an 18px tagline, and a 1.9 line-height list, all sized for a
+     wide column rather than a phone. */
   .about-page main {
-    padding: 24px 16px;
+    padding: 20px 16px;
+  }
+
+  .about-page main > h1 {
+    font-size: 22px;
+  }
+
+  .about-page .tagline {
+    font-size: 16px;
+  }
+
+  .about-features {
+    padding-left: 20px;
+    line-height: 1.6;
+  }
+
+  /* Apple HIG minimum touch target, matching `.btn` above. The negative
+     margin is cancelled out so the hover background still bleeds to the
+     padding edge without pushing the row off the column. */
+  .about-links a {
+    min-height: 44px;
+    padding: 12px;
+    margin: 0 -4px;
+    font-size: 16px; /* prevents iOS zoom-on-focus */
+  }
+
+  .about-page main > h2 {
+    margin: 24px 0 8px;
+  }
+
+  .about-page .about-colophon {
+    font-size: 13px;
+    margin: 24px 0 20px;
+  }
+
+  /* Apple HIG minimum touch target, matching `.btn` above. */
+  .about-page .back-link {
+    display: block;
+    min-height: 44px;
+    padding: 12px 16px;
+    text-align: center;
+    font-size: 16px;
   }
 }

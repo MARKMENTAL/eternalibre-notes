@@ -195,11 +195,20 @@ fn render_menu_bar(base: &Base<'_>) -> Markup {
                     span { "Help" }
                     ul class="menu-dropdown" {
                         li { a href=(base.url("/about")) { "About EternaLibre Notes" } }
-                        li { a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" { "GPL v3 License" } }
+                        li {
+                            a href="https://www.gnu.org/licenses/gpl-3.0.html"
+                                target="_blank"
+                                rel="noopener noreferrer" { "GPL v3 License" }
+                        }
                     }
                 }
             }
-            span class="app-title" { "EternaLibre Notes v0.1" }
+            // From the manifest, so the title bar and the About page can
+            // never disagree. This was a hardcoded "v0.1" that had already
+            // drifted from the crate's 0.1.0.
+            span class="app-title" {
+                (format!("EternaLibre Notes v{}", env!("CARGO_PKG_VERSION")))
+            }
         }
     }
 }
@@ -422,11 +431,19 @@ pub fn render_auth_page(theme_name: &str, error: Option<&str>, base: &Base<'_>) 
 
 pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
     let theme = get_theme(theme_name);
+    let themes = crate::themes::PREDEFINED_THEMES;
+    let dark_themes = themes.iter().filter(|t| t.is_dark()).count();
     html! {
         (DOCTYPE)
         html lang="en" {
             head {
                 meta charset="utf-8";
+                // Without this the browser falls back to a ~980px layout
+                // viewport and scales the page down, so every
+                // `@media (max-width: 600px)` rule silently stops matching
+                // and the desktop layout is what you get. This was the only
+                // screen in the app missing the tag.
+                meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
                 title { "About - EternaLibre Notes" }
                 style { (PreEscaped(theme.to_css_block())) }
                 style { (PreEscaped(include_str!("../static/style.css"))) }
@@ -447,23 +464,61 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                          code from your authenticator app, and it never talks to a third party."
                     }
                     ul class="about-features" {
-                        // Counted from the palette itself. This number was
-                        // previously hardcoded and had drifted to "28" for
-                        // what was really 25 themes.
+                        // Counted from the palette itself, and split by
+                        // background luminance. This number used to be
+                        // hardcoded and had drifted to "28" for what was
+                        // really 25 themes.
                         li {
-                            (format!("{} built-in themes with a full ANSI palette",
-                                crate::themes::PREDEFINED_THEMES.len()))
+                            (format!(
+                                "{} built-in themes ({} dark, {} light) with a full \
+                                 ANSI palette — Solarized, Dracula, Nord, Monokai, and more",
+                                themes.len(),
+                                dark_themes,
+                                themes.len() - dark_themes,
+                            ))
                         }
                         li { "Syntax highlighting for fenced code blocks" }
                         li { "Notes stored as plain Markdown files on disk" }
                         li { "TOTP-locked, with no accounts or third-party services" }
                         li { "Note editing, search, and theming work without JavaScript" }
                     }
-                    p {
-                        "Licensed under the GNU General Public License v3.0 or later. \
-                         No telemetry, no accounts, no vendor."
+                    h2 { "Author" }
+                    ul class="about-links" {
+                        li {
+                            a href="https://github.com/MARKMENTAL" rel="noopener noreferrer" {
+                                "GitHub — MARKMENTAL"
+                            }
+                        }
+                        li {
+                            a href="https://mentalnet.xyz/forgejo-v2/" rel="noopener noreferrer" {
+                                "Forgejo — mentalnet.xyz"
+                            }
+                        }
                     }
-                    a href=(base.url("/")) { "Back to notes" }
+                    h2 { "Other projects" }
+                    ul class="about-links" {
+                        li {
+                            a href="https://github.com/MARKMENTAL/tuxdock"
+                                rel="noopener noreferrer" {
+                                "tux-dock — a C++ TUI for managing Docker containers"
+                            }
+                        }
+                        li {
+                            a href="https://github.com/MARKMENTAL/mentalnet-gnu-linux"
+                                rel="noopener noreferrer" {
+                                "mentalnet GNU/Linux — a TTY-only distribution for vintage \
+                                 Pentium hardware"
+                            }
+                        }
+                    }
+                    p class="about-colophon" {
+                        (format!(
+                            "Version {}. Licensed under the GNU General Public \
+                             License v3.0 or later. No telemetry, no accounts, no vendor.",
+                            env!("CARGO_PKG_VERSION"),
+                        ))
+                    }
+                    a class="back-link" href=(base.url("/")) { "Back to notes" }
                 }
                 (render_status_bar(0, theme_name))
             }

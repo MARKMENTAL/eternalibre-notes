@@ -250,6 +250,35 @@ Implementation notes:
 
 The 24-entry Theme menu can exceed the viewport height, so `.menu-dropdown` itself carries `max-height` plus `overflow-y: auto`. This is the safe location for that property.
 
+### Every screen needs a viewport meta, or the mobile CSS is dead
+
+**`/about` shipped without `<meta name="viewport">` while every other screen had it.** Without it, mobile browsers fall back to a ~980px layout viewport and scale the page down. Two things follow, and both are invisible until you know to look:
+
+1. **`@media (max-width: 600px)` never matches.** The query evaluates against the 980px layout viewport, not the real screen width.
+2. **The desktop layout is what renders**, scaled down — which reads as "assumes a desktop view."
+
+The trap is that the CSS is *correct and present*. You can add a complete mobile stylesheet, see it inlined in the served page, confirm every rule and value is right, and the page still shows the desktop layout because the media query never fires. Two rounds of CSS work were spent on `/about` before the missing meta tag was spotted.
+
+**When a screen's responsive CSS appears to do nothing, check the viewport meta before touching the CSS.**
+
+`render_app`, `render_auth_page`, and `render_about` each render their own `<head>`, so a tag added to one is not inherited by the others. `every_screen_declares_a_viewport` in `tests/auth_gating.rs` checks `/` and `/about` per-screen for this reason; add new screens to that list.
+
+### The About page is a separate document, not the app shell
+
+`/about` renders its own `<html>` via `render_about` and inlines `style.css` itself. It reuses `render_menu_bar` and `render_status_bar` but has no `.toolbar` and no `.tab-bar`, so its chrome deliberately does not match the notes view.
+
+**Its version and theme counts are derived, never typed.** The version comes from `env!("CARGO_PKG_VERSION")`, and the same macro drives the `.app-title` in the menu bar — which previously carried a hand-written `"v0.1"` that had already drifted from the crate's `0.1.0`. The theme line is `PREDEFINED_THEMES.len()` split by `Theme::is_dark()`, so adding or removing a palette needs no edit here. Both are pinned by `about_page_reports_the_manifest_version` and `about_page_theme_counts_come_from_the_palette`.
+
+`Theme::is_dark` classifies on the local gamma-encoded `relative_luminance` rather than the linearised one in `syntax.rs`. That is safe *only* because the shipped palettes are strongly bimodal: the lightest dark background scores 0.095 and the darkest light one 0.63, so any threshold in that gap agrees. If a future palette lands near 0.5, switch this to the WCAG function rather than nudging the threshold — the two agree on all 24 themes today, so the current answer is not a close call.
+
+**Every outbound link carries `rel="noopener noreferrer"`.** These are the only links that leave the machine, and the app advertises that it never talks to a third party. `about_page_external_links_are_hardened` walks every `<a href="https://` in the rendered page, so a link added later without the attributes fails rather than shipping quietly. It caught the Help menu's GPL link, which had `target="_blank"` and no `rel`.
+
+**It is not missing a `.tab-bar` because that is a bug.** The tab bar exists to switch between the notes/editor/preview panes; the about page has no panes. Bolting it on would be chrome for its own sake. The menu bar *is* kept, because the app keeps it on mobile too.
+
+The one thing it was genuinely missing was typography. It was the only screen with no rules of its own, so it rendered at UA defaults — a 2em heading with 0.67em margins and a 1.9 line-height feature list — which read as a desktop page on a phone. It now has a base `h1`/`p` treatment plus a `≤600px` override set (smaller heading and tagline, 1.6 line-height list, 20px padding, and a full-width 44px `.back-link` matching the HIG minimum the rest of the app enforces).
+
+`render_about` must keep `include_str!("../static/style.css")` and the `class="back-link"` on the anchor. `about_page_inlines_the_stylesheet` and `about_page_back_link_is_styled` in `tests/auth_gating.rs` guard both — the latter because the mobile button style hangs entirely off that one class, so dropping it silently reverts to a 13px text link.
+
 ---
 
 ## 8. Menu Bar Behavior
