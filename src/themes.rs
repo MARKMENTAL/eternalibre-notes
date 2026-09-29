@@ -341,17 +341,6 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
-        name: "Sunny Day",
-        fg: "#fff59d",
-        bg: "#33691e",
-        ansi_normal: [
-            "#33691e", "#f57f17", "#c0ca33", "#00acc1", "#00897b", "#5c6bc0", "#7cb342", "#fff59d",
-        ],
-        ansi_bright: [
-            "#558b2f", "#fbc02d", "#afb42b", "#26c6da", "#0097a7", "#3f51b5", "#9ccc65", "#fff9c4",
-        ],
-    },
-    Theme {
         name: "Foggy Morning",
         fg: "#cfd8dc",
         bg: "#455a64",
@@ -411,5 +400,29 @@ mod tests {
             assert_eq!(theme.ansi_normal.len(), 8);
             assert_eq!(theme.ansi_bright.len(), 8);
         }
+    }
+
+    #[test]
+    fn sunny_day_is_gone() {
+        // Removed: a green background with a pale yellow foreground left
+        // almost nothing readable on it.
+        assert!(
+            !PREDEFINED_THEMES.iter().any(|t| t.name == "Sunny Day"),
+            "Sunny Day should have been deleted"
+        );
+        // Dropping a palette shrinks the Theme menu, so the docs and the
+        // about page count have to move with it. This assertion caught the
+        // count being wrong in the docs before this change: they claimed 28
+        // for what was really 25.
+        assert_eq!(PREDEFINED_THEMES.len(), 24);
+    }
+
+    #[test]
+    fn theme_names_are_unique() {
+        let mut names: Vec<&str> = PREDEFINED_THEMES.iter().map(|t| t.name).collect();
+        names.sort_unstable();
+        let total = names.len();
+        names.dedup();
+        assert_eq!(names.len(), total, "duplicate theme name");
     }
 }

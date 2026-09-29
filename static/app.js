@@ -2,6 +2,7 @@ function app() {
   return {
     previewHtml: window.__INITIAL_PREVIEW__ || '',
     previewVisible: true,
+    editorVisible: true,
     tab: window.__DEFAULT_TAB__ || 'notes',
     // Only one menu can be open at a time. Keeping a single name here (rather
     // than a set of booleans) makes mutual exclusion automatic: opening Theme
@@ -38,9 +39,10 @@ function app() {
 
     setTab(name) {
       this.tab = name;
-      // Selecting the Preview tab should always reveal the preview, even if
-      // the toolbar toggle had hidden it on desktop.
+      // Selecting a tab should always reveal its pane, even if that pane had
+      // been collapsed from the View menu.
       if (name === 'preview') this.previewVisible = true;
+      if (name === 'write') this.editorVisible = true;
     },
 
     updatePreview(content) {
@@ -66,6 +68,10 @@ function app() {
 
     togglePreview() {
       this.previewVisible = !this.previewVisible;
+    },
+
+    toggleEditor() {
+      this.editorVisible = !this.editorVisible;
     },
 
     focusEditor() {
@@ -98,7 +104,11 @@ function app() {
           this.saveCurrentNote();
         } else if (event.key.toLowerCase() === 'n') {
           event.preventDefault();
-          const newNoteForm = document.querySelector('form[action="/notes"]');
+          // Match on the path ending in /notes rather than an exact action,
+          // so this still works when the app is mounted under a base path.
+          const newNoteForm = document.querySelector(
+            'form[action$="/notes"], form[action$="/notes/"]'
+          );
           if (newNoteForm) newNoteForm.submit();
         }
       }

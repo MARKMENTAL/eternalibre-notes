@@ -1,4 +1,4 @@
-/* Rasuti Notes — Apple Elegance meets Classic Desktop GUI */
+/* EternaLibre Notes — Apple Elegance meets Classic Desktop GUI */
 
 * {
   box-sizing: border-box;
@@ -126,6 +126,13 @@ button, input, select, textarea {
   text-decoration: none;
 }
 
+/* Marks a View menu item whose pane is currently collapsed, so the state is
+   readable at a glance instead of only via the Hide/Show label. */
+.menu-dropdown button.active-view::before {
+  content: "\2713\00a0";
+  opacity: 0.7;
+}
+
 .menu-dropdown hr {
   border: none;
   border-top: 1px solid var(--ui-border);
@@ -237,6 +244,45 @@ button, input, select, textarea {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+/* When a pane is collapsed via the View menu, the remaining pane reclaims the
+   space. Each state sets its own column count so a lone pane always spans the
+   full remaining width instead of sitting in a half-width track.
+
+   Scoped to desktop only: on mobile the tab bar already decides which single
+   pane is shown, and these rules would outrank `.app-body > .mobile-active`
+   on specificity, leaving the Preview tab permanently empty. */
+@media (min-width: 901px) {
+  .app-body.hide-preview,
+  .app-body.hide-editor {
+    grid-template-columns: 280px 1fr;
+  }
+
+  .app-body.hide-editor.hide-preview {
+    grid-template-columns: 280px;
+  }
+}
+
+@media (min-width: 601px) and (max-width: 900px) {
+  .app-body.hide-preview,
+  .app-body.hide-editor {
+    grid-template-columns: 240px 1fr;
+  }
+
+  .app-body.hide-editor.hide-preview {
+    grid-template-columns: 240px;
+  }
+}
+
+@media (min-width: 601px) {
+  .app-body.hide-editor .editor-pane {
+    display: none;
+  }
+
+  .app-body.hide-preview .preview-pane {
+    display: none;
+  }
 }
 
 /* Sidebar */
@@ -392,10 +438,6 @@ button, input, select, textarea {
   transition: background-color 0.15s ease;
 }
 
-.preview-pane.hidden {
-  display: none;
-}
-
 .markdown-body {
   flex: 1;
   padding: 20px 24px;
@@ -508,6 +550,147 @@ button, input, select, textarea {
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
+/* Auth Pages (/setup, /login) */
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px 28px;
+  background-color: var(--app-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.auth-card h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.auth-subtitle {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+.auth-error {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--ansi-1);
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--ansi-1) 12%, transparent);
+  color: var(--ansi-9);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.auth-qr {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
+  padding: 12px;
+  background-color: #ffffff;
+  border-radius: 8px;
+}
+
+.auth-qr svg {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+}
+
+.auth-manual {
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.auth-manual p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.auth-secret {
+  display: block;
+  padding: 8px 10px;
+  background-color: var(--ui-hover);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
+  font-size: 13px;
+  word-break: break-all;
+  user-select: all;
+}
+
+.auth-note {
+  margin: 0 0 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+
+.auth-note code {
+  padding: 1px 5px;
+  background-color: var(--ui-hover);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-form label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.auth-input {
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  background-color: var(--app-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  color: var(--app-fg);
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
+  font-size: 24px;
+  letter-spacing: 0.35em;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-input:focus {
+  border-color: var(--ansi-4);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ansi-4) 25%, transparent);
+}
+
+.auth-form .btn {
+  min-height: 44px;
+  margin-top: 4px;
+}
+
+.auth-footer {
+  margin: 22px 0 0;
+  text-align: center;
+  font-size: 11px;
+  opacity: 0.5;
+}
+
 /* About Page */
 .about-page {
   display: flex;
@@ -519,6 +702,20 @@ button, input, select, textarea {
   flex: 1;
   padding: 40px;
   max-width: 720px;
+  overflow-y: auto;
+}
+
+.about-page .tagline {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ansi-4);
+  margin-top: 0;
+}
+
+.about-features {
+  margin: 0 0 20px;
+  padding-left: 22px;
+  line-height: 1.9;
 }
 
 /* Mobile Tab Bar — hidden on desktop */
@@ -542,6 +739,13 @@ button, input, select, textarea {
 
   body {
     height: 100dvh;
+  }
+
+  /* Desktop-only affordances, hidden once the tab bar takes over.
+     Paired with the `min-width: 601px` rules for the pane toggles above —
+     keep the two breakpoints in sync. */
+  .desktop-only {
+    display: none;
   }
 
   /* Menu bar wraps to a second row.

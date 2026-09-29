@@ -1,20 +1,20 @@
 # AGENTS.md
 
-Welcome AI assistant! You are working on **Rasuti Notes** (ラスティ Notes)—a server-side rendered (SSR) copyleft Markdown notes application written in Rust.
+Welcome AI assistant! You are working on **EternaLibre Notes** — a server-side rendered (SSR) copyleft Markdown notes application written in Rust.
 
-Rasuti Notes combines **GNU software freedom** (GPL v3.0-or-later) with the **fluid elegance of Apple Notes** and the **predictable utility of classic desktop GUI applications** (menu bars, split panes, and file organization).
+EternaLibre Notes combines **GNU software freedom** (GPL v3.0-or-later) with the **fluid elegance of Apple Notes** and the **predictable utility of classic desktop GUI applications** (menu bars, split panes, and file organization).
+
+The name splits into its two halves: **Eterna** for permanence and **Libre** for freedom. Notes you keep forever, software that stays free. It borrows Apple's polish and then does the opposite of what Apple does with your data.
 
 ---
 
 ## 1. Project Philosophy & Identity
 
-* **Name**: Rasuti Notes (ラスティ Notes—from Japanese *Rasuti* / ラスティ for Rusty).
+* **Name**: EternaLibre Notes — "Free notes, forever."
 * **Mission**: Reclaiming high-performance Rust web development under copyleft terms (GPLv3+). Rejecting heavy client-side JavaScript frameworks and proprietary note silos in favor of software freedom, privacy, and near-zero memory footprint.
 * **UI Paradigm**: **"Apple Elegance meets Classic Desktop GUI"**
 * **Apple Notes Polish**: Fluid sidebars, smooth note item previews, refined typography, generous padding, subtle contrast, and graceful theme transitions.
 * **Traditional Desktop Utility**: Top menu bar (`File`, `Edit`, `View`, `Theme`, `Help`), quick action toolbars, split-pane resizers, keyboard shortcuts, and visible document state.
-
-
 
 ---
 
@@ -24,19 +24,17 @@ The application layout follows a classic 3-column / top-menu layout rendered cle
 
 ```
 +-----------------------------------------------------------------------------------+
-|  [File] [Edit] [View] [Theme] [Help]                  [Rasuti Notes ラスティ v0.1] |  <-- Classic Menu Bar
+|  [File] [Edit] [View] [Theme] [Help]        [EternaLibre Notes v0.1]                  |  <-- Classic Menu Bar
 +-----------------------------------------------------------------------------------+
 |  [+ New Note]  [Delete] |  Search...                  | Theme: [ Dark v ] [Preview] |  <-- Apple-style Toolbar
 +-------------------+-----------------------------------+---------------------------+
 | Sidebar           | Editor Pane                       | Live Preview Pane         |
 | ----------------- | --------------------------------- | ------------------------- |
-| 📝 Project Notes   | # Welcome to Rasuti Notes          | Welcome to Rasuti Notes   |
-|    Sep 28, 2026   |                                   |                           |
-|    GPLv3+ Markdown| Fast, copyleft Markdown editor... | Fast, copyleft Markdown...|
-|                   |                                   |                           |
-| 📝 Rust Snippets  | - [x] High performance SSR        | • [x] High performance SSR|
-|    Sep 25, 2026   | - [ ] Zero heavy JS runtime       | • [ ] Zero heavy JS       |
-|    fn main() ...  |                                   |                           |
+| Notes             | [Untitled              ]       | Welcome to EternaLibre Notes   |
+|  Project Notes    |                                   |                           |
+|   Sep 28, 2026    | # Welcome                        | Fast, copyleft Markdown... |
+|   GPLv3+ Markdown |                                   |                           |
+|   fn main() ...   | Fast, copyleft Markdown editor... |                           |
 +-------------------+-----------------------------------+---------------------------+
 | Status: 2 Notes | Saved | UTF-8 | Markdown | Theme: Dark                        |  <-- Status Bar
 +-----------------------------------------------------------------------------------+
@@ -45,21 +43,57 @@ The application layout follows a classic 3-column / top-menu layout rendered cle
 
 ### Key UX Principles:
 
-1. **Fluid Typography**: Inter/SF Pro or high-quality system sans-serif for the interface; Monospace for Markdown source; clean serif or clean sans for HTML preview.
-2. **Subtle Elevation & Borders**: Soft 1px borders using `--ansi-0` / `--app-bg` contrast shades rather than heavy drop shadows.
+1. **Fluid Typography**: Inter/SF Pro or high-quality system sans-serif for the interface; Monospace for Markdown source; clean sans for HTML preview.
+2. **Subtle Elevation & Borders**: Soft 1px borders using `--ui-border` / `--app-bg` contrast shades rather than heavy drop shadows.
 3. **Apple-style Note List**: Sidebar lists show note title, relative timestamp, and a single line preview snippet in muted text.
-4. **Progressive Enhancement**: Full functionality works with zero JavaScript (via HTML forms and page reloads). With lightweight inline JS or HTMX enabled, typing in the editor triggers real-time live preview swaps without full-page refreshes.
+4. **Progressive Enhancement**: Note editing, search, theming, and the login form all work with JavaScript disabled, via HTML forms and page reloads. Three things are JS-dependent by design: the menu bar (dropdowns open from an Alpine-driven `.open` class), the mobile tab bar, and live preview.
 
 ---
 
 ## 3. Architecture & Tech Stack
 
 * **Language**: Rust (`edition = "2021"`)
-* **Server Framework**: **Axum** or **Actix-web**
-* **SSR Templating**: **`maud`** (compiled, type-safe HTML macros) or **`askama`**
-* **Reactivity / Live Swap**: **HTMX** (or lightweight SSE / fetch script under 5KB) for seamless live preview typing updates and instant theme swapping.
-* **Markdown Engine**: `pulldown-cmark` (with table, tasklist, and strikethrough extensions enabled).
+* **Server Framework**: **Axum 0.7** (async, Tower ecosystem)
+* **Auth**: `totp-rs` 6 (TOTP), `qrcode` 0.14 (inline SVG QR), `rand` 0.10 (session tokens)
+* **SSR Templating**: **`maud` 0.26** (compiled, type-safe HTML macros)
+* **Reactivity / Live Swap**: **Alpine.js 3.14** (vendored locally in `static/`, ~15 KB)
+* **Markdown Engine**: `pulldown-cmark` (with table, tasklist, strikethrough, and footnote extensions)
+* **Syntax Highlighting**: `syntect` 5 (for fenced code blocks, themed per active palette)
+* **Serialization**: `serde` / `serde_json`
+* **Dates**: `chrono`
+* **IDs**: `uuid` v4
+* **Error Handling**: `anyhow` for application errors, `thiserror` for library-style errors
+* **CLI Parsing**: `clap` 4 (derive API)
+* **Static Assets**: `tower-http` `ServeDir` for `/static`
 * **License**: **GNU General Public License v3.0 or later** (`GPL-3.0-or-later`). All dependency crates in `Cargo.toml` must be compatible with GPLv3+.
+
+### Actual Project Structure
+
+```
+eternalibre-notes/
+├── Cargo.toml
+├── LICENSE                     # GPL-3.0 full text
+├── README.md
+├── notes/                      # User data: one .md file per note
+├── src/
+│   ├── main.rs                 # Entry point, CLI args, terminal setup, router assembly
+│   ├── lib.rs                  # Library root, so tests/ can drive the HTTP layer
+│   ├── auth.rs                 # TOTP secret store, session store, verification
+│   ├── setup.rs                # First-run terminal enrolment (QR to stdout, reads stdin)
+│   ├── routes.rs               # HTTP routes, auth gate, base-path joining
+│   ├── pages.rs                # Maud SSR templates + the `Base` URL helper
+│   ├── notes.rs                # Note model + file-system persistence
+│   ├── markdown.rs             # Markdown → HTML with code block interception
+│   ├── syntax.rs               # syntect engine + per-theme tmTheme generation
+│   ├── themes.rs               # 24 predefined themes + CSS variable engine
+│   └── storage.rs              # Storage re-export module
+├── static/
+│   ├── alpine.min.js           # Vendored Alpine.js
+│   ├── app.js                  # Alpine component
+│   └── style.css               # Full application stylesheet
+└── tests/
+    └── auth_gating.rs          # End-to-end tests for the TOTP auth gate
+```
 
 ---
 
@@ -85,191 +119,15 @@ pub struct ANSIPalette {
     pub ansi_normal: [&'static str; 8],
     pub ansi_bright: [&'static str; 8],
 }
-
 ```
 
-### Predefined Themes Vector
+`PREDEFINED_THEMES` contains 24 themes: Dark, Light, Solarized Dark, Solarized Light, Dracula, Gruvbox Dark, Gruvbox Light, Nord, Monokai, Tokyo Night, One Dark, Cyberpunk 2077, Cyan on Black, Red on Black, Lime Green on Black, Chartreuse on Black, Amber on Black, Blueberry on Black, Spring Blossom, Summer Sunset, Autumn Forest, Winter Frost, Stormy Night, and Foggy Morning.
 
-```rust
-pub static PREDEFINED_THEMES: &[Theme] = &[
-    Theme {
-        name: "Dark",
-        fg: "#d0d0d0",
-        bg: "#1c1c1c",
-        ansi_normal: ["#1c1c1c", "#c50f1f", "#23a523", "#b58900", "#268bd2", "#d33682", "#2aa198", "#d0d0d0"],
-        ansi_bright: ["#666666", "#ff6666", "#66ff66", "#ffff66", "#6666ff", "#ff66ff", "#66ffff", "#ffffff"],
-    },
-    Theme {
-        name: "Light",
-        fg: "#1c1c1c",
-        bg: "#d0d0d0",
-        ansi_normal: ["#1c1c1c", "#c50f1f", "#23a523", "#b58900", "#268bd2", "#d33682", "#2aa198", "#d0d0d0"],
-        ansi_bright: ["#666666", "#ff6666", "#66ff66", "#ffff66", "#6666ff", "#ff66ff", "#66ffff", "#ffffff"],
-    },
-    Theme {
-        name: "Solarized Dark",
-        fg: "#839496",
-        bg: "#002b36",
-        ansi_normal: ["#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5"],
-        ansi_bright: ["#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3"],
-    },
-    Theme {
-        name: "Solarized Light",
-        fg: "#657b83",
-        bg: "#fdf6e3",
-        ansi_normal: ["#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5"],
-        ansi_bright: ["#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3"],
-    },
-    Theme {
-        name: "Dracula",
-        fg: "#f8f8f2",
-        bg: "#282a36",
-        ansi_normal: ["#21222c", "#ff5555", "#50fa7b", "#f1fa8c", "#bd93f9", "#ff79c6", "#8be9fd", "#f8f8f2"],
-        ansi_bright: ["#6272a4", "#ff6e6e", "#69ff94", "#ffffa5", "#d6acff", "#ff92df", "#a4ffff", "#ffffff"],
-    },
-    Theme {
-        name: "Gruvbox Dark",
-        fg: "#ebdbb2",
-        bg: "#282828",
-        ansi_normal: ["#282828", "#cc241d", "#98971a", "#d79921", "#458588", "#b16286", "#689d6a", "#a89984"],
-        ansi_bright: ["#928374", "#fb4934", "#b8bb26", "#fabd2f", "#83a598", "#d3869b", "#8ec07c", "#ebdbb2"],
-    },
-    Theme {
-        name: "Gruvbox Light",
-        fg: "#3c3836",
-        bg: "#fbf1c7",
-        ansi_normal: ["#fbf1c7", "#cc241d", "#98971a", "#d79921", "#458588", "#b16286", "#689d6a", "#7c6f64"],
-        ansi_bright: ["#928374", "#9d0006", "#79740e", "#b57614", "#076678", "#8f3f71", "#427b58", "#3c3836"],
-    },
-    Theme {
-        name: "Nord",
-        fg: "#d8dee9",
-        bg: "#2e3440",
-        ansi_normal: ["#3b4252", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#88c0d0", "#e5e9f0"],
-        ansi_bright: ["#4c566a", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#8fbcbb", "#eceff4"],
-    },
-    Theme {
-        name: "Monokai",
-        fg: "#f8f8f2",
-        bg: "#272822",
-        ansi_normal: ["#272822", "#f92672", "#a6e22e", "#f4bf75", "#66d9ef", "#ae81ff", "#a1efe4", "#f8f8f2"],
-        ansi_bright: ["#75715e", "#f92672", "#a6e22e", "#e6db74", "#66d9ef", "#ae81ff", "#a1efe4", "#f9f8f5"],
-    },
-    Theme {
-        name: "Tokyo Night",
-        fg: "#c0caf5",
-        bg: "#1a1b26",
-        ansi_normal: ["#15161e", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#a9b1d6"],
-        ansi_bright: ["#414868", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#c0caf5"],
-    },
-    Theme {
-        name: "One Dark",
-        fg: "#abb2bf",
-        bg: "#282c34",
-        ansi_normal: ["#282c34", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#abb2bf"],
-        ansi_bright: ["#5c6370", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#ffffff"],
-    },
-    Theme {
-        name: "Cyberpunk 2077",
-        fg: "#f9f227",
-        bg: "#0d0d0d",
-        ansi_normal: ["#0d0d0d", "#ff0055", "#00ff41", "#f9f227", "#00b8ff", "#ff00cc", "#00ffff", "#f9f227"],
-        ansi_bright: ["#333333", "#ff3377", "#33ff66", "#ffff33", "#33ccff", "#ff33ff", "#33ffff", "#ffff66"],
-    },
-    Theme {
-        name: "Cyan on Black",
-        fg: "#00ffff",
-        bg: "#000000",
-        ansi_normal: ["#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc"],
-        ansi_bright: ["#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff"],
-    },
-    Theme {
-        name: "Red on Black",
-        fg: "#ff0000",
-        bg: "#000000",
-        ansi_normal: ["#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc"],
-        ansi_bright: ["#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff"],
-    },
-    Theme {
-        name: "Lime Green on Black",
-        fg: "#00ff00",
-        bg: "#000000",
-        ansi_normal: ["#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc"],
-        ansi_bright: ["#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff"],
-    },
-    Theme {
-        name: "Chartreuse on Black",
-        fg: "#7fff00",
-        bg: "#000000",
-        ansi_normal: ["#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc"],
-        ansi_bright: ["#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff"],
-    },
-    Theme {
-        name: "Amber on Black",
-        fg: "#ffbf00",
-        bg: "#000000",
-        ansi_normal: ["#000000", "#cc0000", "#00cc00", "#cccc00", "#0000cc", "#cc00cc", "#00cccc", "#cccccc"],
-        ansi_bright: ["#666666", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff"],
-    },
-    Theme {
-        name: "Blueberry on Black",
-        fg: "#8ec5fc",
-        bg: "#000000",
-        ansi_normal: ["#000000", "#0d47a1", "#1565c0", "#1976d2", "#1e88e5", "#42a5f5", "#64b5f6", "#90caf9"],
-        ansi_bright: ["#37474f", "#1e88e5", "#42a5f5", "#64b5f6", "#90caf9", "#bbdefb", "#e3f2fd", "#ffffff"],
-    },
-    Theme {
-        name: "Spring Blossom",
-        fg: "#ffb7c5",
-        bg: "#2d5016",
-        ansi_normal: ["#2d5016", "#c2185b", "#7cb342", "#fbc02d", "#00897b", "#d81b60", "#aed581", "#f8bbd0"],
-        ansi_bright: ["#558b2f", "#e91e63", "#8bc34a", "#ffeb3b", "#009688", "#ec407a", "#c5e1a5", "#fce4ec"],
-    },
-    Theme {
-        name: "Summer Sunset",
-        fg: "#ff9a5a",
-        bg: "#1a1a2e",
-        ansi_normal: ["#1a1a2e", "#e64a19", "#ff7043", "#ffab40", "#d81b60", "#8e24aa", "#5c6bc0", "#ffb74d"],
-        ansi_bright: ["#424242", "#ff5722", "#ff8a65", "#ffc107", "#e91e63", "#9c27b0", "#3f51b5", "#ffe0b2"],
-    },
-    Theme {
-        name: "Autumn Forest",
-        fg: "#d4a373",
-        bg: "#3e2723",
-        ansi_normal: ["#3e2723", "#bf360c", "#e65100", "#8d6e63", "#5d4037", "#33691e", "#9e9d24", "#a1887f"],
-        ansi_bright: ["#6d4c41", "#e64a19", "#f57c00", "#a1887f", "#795548", "#558b2f", "#c0ca33", "#d7ccc8"],
-    },
-    Theme {
-        name: "Winter Frost",
-        fg: "#e0f7fa",
-        bg: "#1a237e",
-        ansi_normal: ["#1a237e", "#006064", "#00838f", "#0097a7", "#00acc1", "#26c6da", "#4dd0e1", "#80deea"],
-        ansi_bright: ["#283593", "#00897b", "#00acc1", "#26c6da", "#4dd0e1", "#80deea", "#b2ebf2", "#ffffff"],
-    },
-    Theme {
-        name: "Stormy Night",
-        fg: "#b0bec5",
-        bg: "#263238",
-        ansi_normal: ["#263238", "#37474f", "#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5"],
-        ansi_bright: ["#455a64", "#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1", "#ffffff"],
-    },
-    Theme {
-        name: "Sunny Day",
-        fg: "#fff59d",
-        bg: "#33691e",
-        ansi_normal: ["#33691e", "#f57f17", "#c0ca33", "#00acc1", "#00897b", "#5c6bc0", "#7cb342", "#fff59d"],
-        ansi_bright: ["#558b2f", "#fbc02d", "#afb42b", "#26c6da", "#0097a7", "#3f51b5", "#9ccc65", "#fff9c4"],
-    },
-    Theme {
-        name: "Foggy Morning",
-        fg: "#cfd8dc",
-        bg: "#455a64",
-        ansi_normal: ["#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1"],
-        ansi_bright: ["#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1", "#f5f5f5", "#ffffff"],
-    },
-];
+"Sunny Day" was removed: a mid-green background with a pale yellow foreground left almost nothing legible on it, and no amount of syntax tuning rescues a palette that bad.
 
-```
+### Theme Selection
+
+The active theme is stored in a `theme` cookie. The server reads it from the `Cookie` header on every request and injects the matching CSS variable block into the `<head>`. No JavaScript is required to change themes — a plain `<form method="post" action="/theme">` sets a new cookie and redirects.
 
 ---
 
@@ -286,28 +144,243 @@ impl Theme {
                --app-bg: {};\n\
                --ui-border: {}33;\n\
                --ui-hover: {}1a;\n\
+               --btn-primary-bg: {};\n\
+               --btn-primary-fg: {};\n\
+               --btn-danger-bg: {};\n\
+               --btn-danger-fg: {};\n\
                --ansi-0: {}; --ansi-1: {}; --ansi-2: {}; --ansi-3: {};\n\
                --ansi-4: {}; --ansi-5: {}; --ansi-6: {}; --ansi-7: {};\n\
                --ansi-8: {}; --ansi-9: {}; --ansi-10: {}; --ansi-11: {};\n\
                --ansi-12: {}; --ansi-13: {}; --ansi-14: {}; --ansi-15: {};\n\
              }}",
-            self.fg, self.bg,
-            self.fg, self.fg,
-            self.ansi_normal[0], self.ansi_normal[1], self.ansi_normal[2], self.ansi_normal[3],
-            self.ansi_normal[4], self.ansi_normal[5], self.ansi_normal[6], self.ansi_normal[7],
-            self.ansi_bright[0], self.ansi_bright[1], self.ansi_bright[2], self.ansi_bright[3],
-            self.ansi_bright[4], self.ansi_bright[5], self.ansi_bright[6], self.ansi_bright[7],
+            ...
         )
     }
 }
-
 ```
+
+### Accessibility Guard: Button Color Derivation
+
+Some themes ship accent colors that are nearly invisible on their own background. Rather than hand-tuning every theme, `Theme::button_colors(accent)` computes a relative luminance and falls back to the theme foreground when an accent is too dark to read:
+
+```rust
+fn button_colors(&self, accent: usize) -> (&'static str, &'static str) {
+    let bright = self.ansi_bright[accent];
+    if relative_luminance(bright) < 0.15 {
+        (self.fg, self.bg)
+    } else {
+        (bright, self.bg)
+    }
+}
+```
+
+Themes that previously used `#0000ff` on a pure black background were also corrected at the source: that slot is now `#a9a9f9` in the affected palettes (Cyan on Black, Red on Black, Lime Green on Black, Chartreuse on Black, and Amber on Black).
 
 ---
 
-## 6. Rules & Directives for AI Developers
+## 6. Syntax Highlighting
+
+`src/syntax.rs` generates a `.tmTheme` plist **at runtime** from each EternaLibre theme, then loads it into `syntect`. This means code highlighting always matches the active palette instead of shipping one fixed color scheme.
+
+```rust
+pub struct SyntaxState {
+    pub syntax_set: SyntaxSet,
+    pub themes: HashMap<String, SyntectTheme>,
+}
+```
+
+The state is held in a `OnceLock` and initialized eagerly at startup so the first request is not slow. `src/markdown.rs` walks the `pulldown-cmark` event stream, intercepts `Event::Start(Tag::CodeBlock(..))`, collects the text, highlights it, and re-emits it as `Event::Html`. Unknown language tags fall back to plain text.
+
+Scope → ANSI mapping, by ANSI slot:
+
+| Scope | Slot |
+|-------|------|
+| `comment` | black (see below) + italic |
+| `string` | green |
+| `constant.numeric` / `constant` | yellow |
+| `keyword` / `storage` | magenta |
+| `entity.name.function` / `support.function` | blue |
+| `entity.name.type` | cyan |
+| `variable` / `invalid` | red |
+
+### Colors are chosen by measured contrast, not by index
+
+An earlier revision hardcoded the **bright** variant of every slot. That is correct for a dark background and disastrous for a light one: the Light theme rendered `#66ff66` strings against a `#d0d0d0` background at **1.17:1**, which is not "low contrast", it is invisible. Nothing about the palette data flagged it — both colors were valid hex.
+
+`syntax_color` therefore picks between `ansi_normal[slot]` and `ansi_bright[slot]` by **WCAG contrast ratio against the theme background**, and `comment_color` does the same over the two blacks plus the foreground. This is the same reasoning as the `button_colors` luminance guard in §5: prefer the measured property over a hand-maintained table.
+
+Two things to know if you touch this:
+
+* **`syntax.rs` has its own `relative_luminance`, and it is not the one in `themes.rs`.** The `themes.rs` version sums gamma-encoded channels and is only good enough for the coarse `< 0.15` button guard. Contrast ratios need the linearized sRGB curve, or the numbers are wrong in precisely the range that matters (dark colors on light backgrounds). They are deliberately different functions with nearly identical names.
+* **Candidates are sorted by contrast, not kept in a fixed order.** Which ANSI black is the dimmer one flips between light and dark backgrounds, so a hardcoded preference order silently picks the loud option on half the palettes.
+
+### Comments optimize for the *opposite* end of the tradeoff
+
+`syntax_color` takes the **most** readable candidate. `comment_color` takes the **least** prominent one that still clears `COMMENT_MIN_CONTRAST` (2.5:1). Maximizing comment contrast is maximally legible and practically useless — on the Light theme it paints every comment the same color as the surrounding prose, so a commented block becomes a wall of text with no hierarchy left to scan.
+
+Where no candidate clears the floor, the palette is at fault, not the code. **Solarized Dark ships `#002b36` as its bright black, which is exactly its background** — comments there were not faint, they were invisible at 1.00:1. The fallback to the foreground is what rescues it (4.86:1).
+
+Comments also carry `fontStyle: italic` in the tmTheme, which syntect renders as `font-style:italic` on the span. Color alone is not a reliable signal, since a comment that falls back to the foreground is by definition the same color as the prose.
+
+The three failure modes are each pinned by a test, and each test was verified to fail when the corresponding bug is reintroduced: `comments_are_readable_in_every_theme`, `no_theme_uses_its_background_for_comments`, and `comments_stay_distinct_from_the_foreground_when_they_can`. `syntax_color_always_picks_the_more_readable_variant` additionally pins the selection rule itself across all 24 themes and all 8 slots.
+
+### The Light theme has a data ceiling, not a logic bug
+
+`Light` is a literal inversion of `Dark` — the same 16 colors with `fg` and `bg` swapped, on a mid-gray `#d0d0d0` background. After this change its worst scope bottoms out at **2.05:1** (type/cyan, `#2aa198`), because no slot in that palette offers a darker or more saturated cyan. The selection logic is already returning the best available option; the palette is what limits it.
+
+So **do not "fix" a low-contrast Light theme by changing the selection logic** — it is provably optimal per slot, and `syntax_color_always_picks_the_more_readable_variant` will fail if it stops being so. The only real remedies are palette changes: lightening the background to near-white lifts type/cyan from 2.05:1 to 3.16:1 and string/green from 2.10:1 to 3.24:1, or replacing the normal ANSI colors outright. Both change how the whole application looks, not just code, so they are a design decision rather than a bug fix.
+
+---
+
+## 7. Responsive / Mobile Design
+
+Desktop keeps the 3-column grid. At `max-width: 600px` (which covers iPhone 11 at 390px CSS width) the layout collapses to a **tabbed single-pane interface** with a **Notes / Write / Preview** tab bar.
+
+Implementation notes:
+* The whole page is a flex column using `height: 100dvh`, so the mobile browser chrome that hides on scroll does not break the layout. This replaced an earlier brittle `calc(100vh - 32px - 44px - 24px)` height calculation.
+* The default tab (`write` when a note is open, `notes` otherwise) is rendered **server-side** onto the correct pane as `mobile-active`, so the layout still works with JavaScript disabled. Alpine only takes over switching afterward.
+* Touch targets are at least 44px tall (Apple HIG minimum). Inputs and textareas use a 16px font size on mobile to prevent iOS Safari zoom-on-focus.
+* The toolbar wraps rather than overflowing, and `min-width: 0` is set on flex children so they shrink instead of stretching off-screen.
+
+### CSS Stacking Context Rule
+
+`overflow` on an **ancestor** creates a new stacking context, which traps absolutely positioned descendants. An earlier revision set `overflow-x: auto` on `.menu-list` to allow horizontal menu scrolling, which silently pushed the menu dropdowns *underneath* the toolbar. The fix is `flex-wrap: wrap` with `overflow: visible`.
+
+> **Do not reintroduce `overflow`, `transform`, `filter`, or `opacity` on `.menu-bar`, `.menu-list`, or `.menu-item`.** `overflow` on the dropdown *itself* is safe (it only clips its own contents), but on an ancestor it traps the dropdown.
+
+The 24-entry Theme menu can exceed the viewport height, so `.menu-dropdown` itself carries `max-height` plus `overflow-y: auto`. This is the safe location for that property.
+
+---
+
+## 8. Menu Bar Behavior
+
+Menus are opened by **click**, not CSS `:hover`, driven by a single Alpine state variable. Keeping one name in one slot makes mutual exclusion automatic — opening Theme while Help is open simply reassigns the value, so Help hides itself with no extra bookkeeping.
+
+```javascript
+openMenu: null,
+toggleMenu(name) {
+  this.openMenu = this.openMenu === name ? null : name;
+},
+```
+
+Dropdowns are revealed by a class on the trigger rather than `x-show`, because Alpine's `x-show` works by *removing* an inline `display` when true, at which point the stylesheet's `display: none` would take over again and the menu would stay hidden. Driving it from `.menu-item.open .menu-dropdown` also means the menus stay closed if JavaScript never loads, instead of all five appearing at once.
+
+**Consequence: the menu bar requires JavaScript.** Since `.open` is applied by Alpine, no dropdown opens without it. This is a deliberate trade-off (see section 2, directive 4) — note CRUD, search, and theming are unaffected. If you change this, keep `.desktop-only` and the `.open` rule consistent; see section 8.
+
+Outside-click detection is a manual `document` listener in an `init()` hook with a matching `destroy()`. `Escape` closes any open menu.
+
+### Maud + Alpine Modifier Caveat
+
+**Maud treats `.` in an attribute name as CSS class shorthand.** `x-on:click.outside="..."` parses as the attribute `x-on:click` plus a class named `outside`, producing a `duplicate attribute class` compile error. The same applies to `x-on:input.debounce.300ms` and `x-on:click.stop`. Use plain Alpine directives in Maud templates and bind modifiers manually in `static/app.js`.
+
+---
+
+## 9. Routes
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/login` | TOTP unlock form (public) |
+| `POST` | `/login` | Verify code, issue session (public) |
+| `POST` | `/logout` | Drop the session server-side and clear the cookie |
+| `GET` | `/` | App shell with note list (accepts `?q=` for search) |
+| `GET` | `/notes/:id` | App shell with a note open in the editor |
+| `POST` | `/notes` | Create a new note, redirect to it |
+| `POST` | `/notes/:id` | Update or delete based on the `_method` form field |
+| `POST` | `/preview` | Returns rendered HTML for live preview |
+| `POST` | `/theme` | Sets the `theme` cookie, redirects to `/` |
+| `GET` | `/about` | Static about page |
+| `GET` | `/export` | Downloads all notes as a single Markdown file |
+| `*` | `/static/*` | Vendored Alpine.js, app.js, and style.css |
+
+Notes are stored as `<uuid>.md` files in `notes/` with YAML frontmatter carrying `title`, `created`, and `updated` timestamps. When no frontmatter is present, the title is derived from the first `# ` heading. The directory is overridable via the `--notes-dir` flag or the `ETERNALIBRE_NOTES_DIR` env var, which is how the integration tests stay out of real user data.
+
+---
+
+## 9b. TOTP Authentication
+
+Every route except `/login` and `/logout` sits behind a `route_layer` middleware. This is a hard gate: an unauthenticated caller gets `303` to `/login` and never reaches a handler that could observe note content.
+
+### Enrolment happens in the terminal, not on a page
+
+**There is no `/setup` route.** `setup::run_interactive_setup` runs in `main()` *before* the listener binds, prints the QR as `Dense1x2` blocks (plus the Base32 secret and `otpauth://` URI as manual-entry fallbacks), and blocks on stdin for the code. Only then does the socket open.
+
+This is the security property, not a convenience: an HTTP-reachable enrolment endpoint means anyone who can reach the port before the operator finishes could claim the device. Because setup completes before `axum::serve` is called, that window does not exist. There is a test asserting `GET /setup` returns 404.
+
+If the secret file is deleted while the server runs, `/login` returns 503 with a "restart and complete setup in the terminal" message rather than redirecting to a dead route.
+
+### Design decisions
+
+**The secret is only committed after a successful verification.** `begin_setup` generates a secret and stashes it as `pending_secret` in memory. `verify_setup` checks the entered code against that pending secret and only then writes `.totp_secret` to disk (mode `0600`). A half-finished setup therefore cannot lock anyone out, and a wrong code leaves no file behind.
+
+**Regenerating setup is safe.** Every call to `begin_setup` replaces `pending_secret` and invalidates any previously displayed QR code. The code on screen is always the one that will work.
+
+**Sessions are in-memory only.** A restart drops every session, which matches the "authenticate on launch" requirement. Tokens are 32 hex-encoded bytes from the OS-seeded generator, held in a `HashMap<String, Instant>` behind an `RwLock`. Expired entries are pruned on every validation.
+
+**`/preview` returns 401, not a redirect.** It is fetched by `fetch()` from the live-preview JS. Redirecting would hand that `fetch` the login HTML, and the `x-html` swap would silently paste a login page into the preview pane. A 401 fails loudly instead.
+
+**Logout forgets the token server-side**, not just the cookie. Clearing only the cookie would leave a captured copy of the token valid for the rest of its hour.
+
+**A corrupt `.totp_secret` fails closed.** `verify_code` parses the secret before looking at the code, so a truncated or corrupted file makes every login impossible rather than accepting anything.
+
+**Recovery is deleting the file.** `rm .totp_secret` and restart reopens the terminal enrolment flow. There is no recovery-code fallback by design — the file *is* the recovery mechanism.
+
+### Session cookie
+
+```
+eternalibre_session=<64 hex chars>; Path=/; HttpOnly; SameSite=Strict; Max-Age=3600
+```
+
+`Secure` is deliberately omitted so the app also works over plain HTTP on a trusted LAN, which is the intended deployment (it binds `0.0.0.0` by default). `Path` becomes the base path when one is configured; see 9c.
+
+### skew
+
+`with_skew(1)` accepts the neighbouring 30s step, so roughly ±30s of clock drift still validates. Two steps out is rejected — there are tests pinning both edges of that window.
+
+---
+
+## 9c. Base Path (reverse-proxy subdirectory)
+
+`--base-path /forgejo` makes the app answer behind a reverse proxy that mounts it at a subdirectory. Empty (the default) means the site root, which is what most installs use and is unchanged behaviour.
+
+**The app is mounted at the proxy's root.** It receives app-absolute paths (`/about`, not `/forgejo/about`) because `ProxyPass` strips the prefix. The base path is used *only when generating URLs*: hrefs, form actions, the static asset `src`, and every `Location` header.
+
+```apache
+ProxyPass        /forgejo/  http://127.0.0.1:3000/  timeout=10
+ProxyPassReverse /forgejo/  http://127.0.0.1:3000/
+```
+
+Consequences that are easy to get wrong:
+
+- **Cookie `Path` is scoped to the prefix** (`Path=/forgejo`), so the session token is not sent to sibling apps on the same host. At the root it is `/`, the default-path.
+- **Static assets stay app-absolute** (`nest_service("/static")` in `routes::app`). This is the one place the base path is *not* applied, and getting it wrong is subtle: the asset 404s, `x-data="app()"` never initialises, and every Alpine directive — including the File menu dropdowns — silently stops working. There is a test asserting `GET /static/app.js` returns 200 while a base path is set. `app.js` is inlined via `include_str!` and has no URL to rewrite; only `alpine.min.js` and `style.css` are externally loaded.
+- **Curl will 404 on prefixed paths.** Hitting `http://host:3000/forgejo/login` directly bypasses Apache, so nothing strips the prefix. Test through the proxy, or curl the app-absolute path.
+- **Never hardcode a path in JS.** `static/app.js` matches the new-note form with `form[action$="/notes"]` rather than an exact attribute, so `Ctrl+N` keeps working under any prefix.
+
+---
+
+## 10. CLI
+
+```
+Usage: eternalibre-notes [OPTIONS]
+
+Options:
+      --host <HOST>  Host address to bind to [default: 0.0.0.0]
+  -p, --port <PORT>  Port to listen on [default: 3000]
+      --notes-dir <NOTES_DIR>  Directory holding note files [default: notes]
+      --base-path <BASE_PATH>  Path prefix when served behind a reverse proxy subdirectory [default: ]
+  -h, --help         Print help
+```
+
+Binding to `0.0.0.0` by default makes the app reachable from other devices on the local network, which is how you would use it from a phone. Because the listener is exposed to the network, TOTP is not optional — it is the only thing between an unauthenticated peer and your notes.
+
+---
+
+## 11. Rules & Directives for AI Developers
 
 1. **Licensing**: Keep all dependencies compatible with **GNU GPLv3+**. Verify crate licenses before introducing new Cargo dependencies.
 2. **SSR First**: Ensure basic editing and rendering functionality operates without JavaScript enabled. Use standard HTML forms, query parameters, or cookies for persistence.
 3. **Fluid Micro-interactions**: When applying CSS, use smooth `transition: background-color 0.15s ease, color 0.15s ease` so theme switching feels fluid and premium.
 4. **Clean Code**: Enforce strict idiomatic Rust (`cargo clippy -- -D warnings`). Avoid `unsafe` blocks.
+5. **Respect the stacking context rule**: See section 7 before touching overflow or transform on menu-related selectors.
+6. **Remember the Maud attribute caveat**: See section 8 before adding any Alpine modifier to a template.
+7. **Test before claiming done**: Run `cargo fmt -- --check`, `cargo clippy -- -D warnings`, `cargo test`, and `cargo build --release`. If a browser is unavailable, say so rather than implying the UI was visually verified.

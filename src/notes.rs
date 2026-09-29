@@ -2,7 +2,19 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Directory holding note files.
+///
+/// Overridable via `ETERNALIBRE_NOTES_DIR` so integration tests can run against a
+/// throwaway directory instead of the user's real notes.
+pub fn notes_dir() -> PathBuf {
+    PathBuf::from(std::env::var("ETERNALIBRE_NOTES_DIR").unwrap_or_else(|_| "notes".to_string()))
+}
+
+fn note_path(id: &str) -> PathBuf {
+    notes_dir().join(format!("{id}.md"))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
@@ -43,7 +55,11 @@ impl Note {
 
 pub fn list_notes() -> Result<Vec<Note>> {
     let mut notes = Vec::new();
-    let entries = fs::read_dir("notes")?;
+    let dir = notes_dir();
+    if !dir.exists() {
+        return Ok(notes);
+    }
+    let entries = fs::read_dir(dir)?;
 
     for entry in entries {
         let entry = entry?;
@@ -60,8 +76,7 @@ pub fn list_notes() -> Result<Vec<Note>> {
 }
 
 pub fn load_note(id: &str) -> Result<Note> {
-    let path = format!("notes/{}.md", id);
-    load_note_from_path(Path::new(&path))
+    load_note_from_path(&note_path(id))
 }
 
 fn load_note_from_path(path: &Path) -> Result<Note> {
@@ -123,7 +138,7 @@ fn parse_frontmatter(content: &str) -> (String, String, DateTime<Utc>, DateTime<
 }
 
 pub fn save_note(note: &Note) -> Result<()> {
-    let path = format!("notes/{}.md", note.id);
+    fs::create_dir_all(notes_dir())?;
     let frontmatter = format!(
         "---\ntitle: {}\ncreated: {}\nupdated: {}\n---\n{}",
         note.title,
@@ -131,13 +146,12 @@ pub fn save_note(note: &Note) -> Result<()> {
         note.updated_at.to_rfc3339(),
         note.content
     );
-    fs::write(path, frontmatter)?;
+    fs::write(note_path(&note.id), frontmatter)?;
     Ok(())
 }
 
 pub fn delete_note(id: &str) -> Result<()> {
-    let path = format!("notes/{}.md", id);
-    fs::remove_file(path)?;
+    fs::remove_file(note_path(id))?;
     Ok(())
 }
 
@@ -173,7 +187,7 @@ mod tests {
 
     #[test]
     fn crud_lifecycle() {
-        std::fs::create_dir_all("notes").unwrap();
+        std::fs::create_dir_all(notes_dir()).unwrap();
         let note = create_note("CRUD Test", "Initial content").unwrap();
         let loaded = load_note(&note.id).unwrap();
         assert_eq!(loaded.title, "CRUD Test");
@@ -190,7 +204,7 @@ mod tests {
 
     #[test]
     fn derives_title_from_heading() {
-        std::fs::create_dir_all("notes").unwrap();
+        std::fs::create_dir_all(notes_dir()).unwrap();
         let note = create_note("Fallback", "# Real Title\n\nSome content.").unwrap();
         let loaded = load_note(&note.id).unwrap();
         // The stored title is what was passed to create_note, but the file content has a heading.

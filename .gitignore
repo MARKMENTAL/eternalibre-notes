@@ -1,2 +1,5 @@
 /target
 /notes/*.md
+
+# TOTP secret — never commit this
+.totp_secret

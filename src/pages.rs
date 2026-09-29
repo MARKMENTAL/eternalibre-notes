@@ -4,12 +4,32 @@ use crate::themes::{get_theme, PREDEFINED_THEMES};
 use chrono::{DateTime, Utc};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
+/// Base path prefix for generated URLs.
+///
+/// Wraps the configured prefix so every `href`/`action`/`src` in the templates
+/// goes through one call. Empty means mounted at the root, which is the
+/// default and what most installs use.
+#[derive(Clone, Copy)]
+pub struct Base<'a>(&'a str);
+
+impl<'a> Base<'a> {
+    pub fn new(prefix: &'a str) -> Self {
+        Base(prefix)
+    }
+
+    /// Joins the prefix onto an app-absolute path.
+    pub fn url(&self, path: &str) -> String {
+        format!("{}{}", self.0, path)
+    }
+}
+
 pub fn render_app(
     theme_name: &str,
     notes: &[Note],
     current_note: Option<&Note>,
     query: Option<&str>,
     message: Option<&str>,
+    base: &Base<'_>,
 ) -> Markup {
     let theme = get_theme(theme_name);
     let css = theme.to_css_block();
@@ -31,21 +51,22 @@ pub fn render_app(
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
-                title { "Rasuti Notes" }
+                title { "EternaLibre Notes" }
                 style { (PreEscaped(css)) }
                 style { (PreEscaped(include_str!("../static/style.css"))) }
-                script defer src="/static/alpine.min.js" {}
+                script defer src=(base.url("/static/alpine.min.js")) {}
             }
             body x-data="app()" x-on:keydown="handleKeydown($event)" {
-                (render_menu_bar())
-                (render_toolbar(current_note, query, theme_name))
+                (render_menu_bar(base))
+                (render_toolbar(current_note, query, theme_name, base))
                 @if let Some(msg) = message {
                     div class="flash-message" { (msg) }
                 }
                 (render_tab_bar(default_tab))
-                main class="app-body" {
-                    (render_sidebar(notes, current_note, default_tab))
-                    (render_editor(current_note, default_tab))
+                main class="app-body"
+                    x-bind:class="{ 'hide-editor': !editorVisible, 'hide-preview': !previewVisible }" {
+                    (render_sidebar(notes, current_note, default_tab, base))
+                    (render_editor(current_note, default_tab, base))
                     (render_preview(&rendered_preview, default_tab))
                 }
                 (render_status_bar(notes.len(), theme_name))
@@ -97,7 +118,7 @@ fn render_tab_bar(default_tab: &str) -> Markup {
     }
 }
 
-fn render_menu_bar() -> Markup {
+fn render_menu_bar(base: &Base<'_>) -> Markup {
     html! {
         nav class="menu-bar" {
             ul class="menu-list" {
@@ -107,13 +128,13 @@ fn render_menu_bar() -> Markup {
                     span { "File" }
                     ul class="menu-dropdown" {
                         li {
-                            form action="/notes" method="post" {
+                            form action=(base.url("/notes")) method="post" {
                                 button type="submit" { "New Note" }
                             }
                         }
                         li { hr; }
                         li {
-                            a href="/export" { "Export All Notes" }
+                            a href=(base.url("/export")) { "Export All Notes" }
                         }
                     }
                 }
@@ -131,8 +152,26 @@ fn render_menu_bar() -> Markup {
                     x-bind:class="{ 'open': openMenu === 'view' }" {
                     span { "View" }
                     ul class="menu-dropdown" {
-                        li { a href="/" { "Show All Notes" } }
-                        li { button x-on:click="togglePreview()" { "Toggle Preview" } }
+                        li { a href=(base.url("/")) { "Show All Notes" } }
+                        // Pane collapsing is a desktop split-view affordance.
+                        // On mobile the tab bar already decides which single
+                        // pane is shown, so these are hidden there; see
+                        // `.desktop-only` in style.css.
+                        li class="desktop-only" { hr; }
+                        li class="desktop-only" {
+                            button x-on:click="toggleEditor()"
+                                x-bind:class="{ 'active-view': !editorVisible }"
+                                x-text="editorVisible ? 'Hide Editor' : 'Show Editor'" {
+                                "Toggle Editor"
+                            }
+                        }
+                        li class="desktop-only" {
+                            button x-on:click="togglePreview()"
+                                x-bind:class="{ 'active-view': !previewVisible }"
+                                x-text="previewVisible ? 'Hide Preview' : 'Show Preview'" {
+                                "Toggle Preview"
+                            }
+                        }
                     }
                 }
                 li class="menu-item" tabindex="0"
@@ -142,7 +181,7 @@ fn render_menu_bar() -> Markup {
                     ul class="menu-dropdown" {
                         @for theme in PREDEFINED_THEMES {
                             li {
-                                form action="/theme" method="post" {
+                                form action=(base.url("/theme")) method="post" {
                                     input type="hidden" name="theme" value=(theme.name);
                                     button type="submit" { (theme.name) }
                                 }
@@ -155,32 +194,37 @@ fn render_menu_bar() -> Markup {
                     x-bind:class="{ 'open': openMenu === 'help' }" {
                     span { "Help" }
                     ul class="menu-dropdown" {
-                        li { a href="/about" { "About Rasuti Notes" } }
+                        li { a href=(base.url("/about")) { "About EternaLibre Notes" } }
                         li { a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" { "GPL v3 License" } }
                     }
                 }
             }
-            span class="app-title" { "Rasuti Notes ラスティ v0.1" }
+            span class="app-title" { "EternaLibre Notes v0.1" }
         }
     }
 }
 
-fn render_toolbar(current_note: Option<&Note>, query: Option<&str>, theme_name: &str) -> Markup {
+fn render_toolbar(
+    current_note: Option<&Note>,
+    query: Option<&str>,
+    theme_name: &str,
+    base: &Base<'_>,
+) -> Markup {
     html! {
         div class="toolbar" {
             div class="toolbar-group" {
-                form action="/notes" method="post" {
+                form action=(base.url("/notes")) method="post" {
                     button type="submit" class="btn btn-primary" { "+ New Note" }
                 }
                 @if let Some(note) = current_note {
-                    form action=(format!("/notes/{}", note.id)) method="post" {
+                    form action=(base.url(&format!("/notes/{}", note.id))) method="post" {
                         input type="hidden" name="_method" value="delete";
                         button type="submit" class="btn btn-danger" { "Delete" }
                     }
                 }
             }
             div class="toolbar-group" {
-                form action="/" method="get" class="search-form" {
+                form action=(base.url("/")) method="get" class="search-form" {
                     input
                         type="search"
                         name="q"
@@ -190,7 +234,7 @@ fn render_toolbar(current_note: Option<&Note>, query: Option<&str>, theme_name: 
                 }
             }
             div class="toolbar-group" {
-                form action="/theme" method="post" class="theme-form" x-on:change="$event.target.form.submit()" {
+                form action=(base.url("/theme")) method="post" class="theme-form" x-on:change="$event.target.form.submit()" {
                     label { "Theme:" }
                     select name="theme" {
                         @for theme in PREDEFINED_THEMES {
@@ -198,13 +242,17 @@ fn render_toolbar(current_note: Option<&Note>, query: Option<&str>, theme_name: 
                         }
                     }
                 }
-                button type="button" class="btn" x-on:click="togglePreview()" { "Preview" }
             }
         }
     }
 }
 
-fn render_sidebar(notes: &[Note], current_note: Option<&Note>, default_tab: &str) -> Markup {
+fn render_sidebar(
+    notes: &[Note],
+    current_note: Option<&Note>,
+    default_tab: &str,
+    base: &Base<'_>,
+) -> Markup {
     let active = if default_tab == "notes" {
         " mobile-active"
     } else {
@@ -222,7 +270,7 @@ fn render_sidebar(notes: &[Note], current_note: Option<&Note>, default_tab: &str
                         li class={"note-item " (if current_note.map(|n| n.id == note.id).unwrap_or(false) { "active" } else { "" })}
                             data-title=(note.title.to_lowercase())
                             data-content=(note.content.to_lowercase()) {
-                            a href=(format!("/notes/{}", note.id)) {
+                            a href=(base.url(&format!("/notes/{}", note.id))) {
                                 div class="note-title" { (note.title) }
                                 div class="note-meta" { (relative_time(note.updated_at)) }
                                 div class="note-preview" { (note.preview(80)) }
@@ -235,7 +283,7 @@ fn render_sidebar(notes: &[Note], current_note: Option<&Note>, default_tab: &str
     }
 }
 
-fn render_editor(current_note: Option<&Note>, default_tab: &str) -> Markup {
+fn render_editor(current_note: Option<&Note>, default_tab: &str, base: &Base<'_>) -> Markup {
     let active = if default_tab == "write" {
         " mobile-active"
     } else {
@@ -248,7 +296,7 @@ fn render_editor(current_note: Option<&Note>, default_tab: &str) -> Markup {
             @if let Some(note) = current_note {
                 form
                     id="note-form"
-                    action=(format!("/notes/{}", note.id))
+                    action=(base.url(&format!("/notes/{}", note.id)))
                     method="post"
                     x-on:submit="saving = true"
                     class="note-form" {
@@ -291,7 +339,7 @@ fn render_preview(html_content: &str, default_tab: &str) -> Markup {
     };
     html! {
         section class={"preview-pane" (active)} data-tab-pane="preview"
-            x-bind:class="{ 'hidden': !previewVisible, 'mobile-active': tab === 'preview' }" {
+            x-bind:class="{ 'mobile-active': tab === 'preview' }" {
             div id="preview" class="markdown-body" x-html="previewHtml" {
                 (PreEscaped(html_content))
             }
@@ -317,24 +365,105 @@ pub fn render_preview_fragment(html_content: &str) -> Markup {
     }
 }
 
-pub fn render_about(theme_name: &str) -> Markup {
+/// Renders the `/login` page.
+///
+/// TOTP enrolment lives in the terminal (`setup::run_interactive_setup`) and
+/// completes before the listener binds, so there is deliberately no setup
+/// variant of this page: an HTTP-reachable enrolment endpoint would let
+/// anyone who can reach the port before the operator finish claim the
+/// device. `error` is displayed inline above the form.
+pub fn render_auth_page(theme_name: &str, error: Option<&str>, base: &Base<'_>) -> Markup {
+    let theme = get_theme(theme_name);
+    html! {
+        (DOCTYPE)
+        html lang="en" data-theme=(theme_name) {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1";
+                title { "Unlock - EternaLibre Notes" }
+                style { (PreEscaped(theme.to_css_block())) }
+                style { (PreEscaped(include_str!("../static/style.css"))) }
+            }
+            body class="auth-page" {
+                main class="auth-card" {
+                    h1 { "EternaLibre Notes" }
+                    p class="auth-subtitle" {
+                        "Enter the 6-digit code from your authenticator app."
+                    }
+
+                    @if let Some(err) = error {
+                        div class="auth-error" role="alert" { (err) }
+                    }
+
+                    form method="post" action=(base.url("/login")) class="auth-form" {
+                        label for="code" { "6-digit code" }
+                        input
+                            type="text"
+                            id="code"
+                            name="code"
+                            class="auth-input"
+                            placeholder="000000"
+                            inputmode="numeric"
+                            autocomplete="one-time-code"
+                            pattern="[0-9]{6}"
+                            maxlength="6"
+                            required
+                            autofocus
+                            spellcheck="false";
+                        button type="submit" class="btn btn-primary" { "Unlock" }
+                    }
+
+                    p class="auth-footer" { "EternaLibre Notes" }
+                }
+            }
+        }
+    }
+}
+
+pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
     let theme = get_theme(theme_name);
     html! {
         (DOCTYPE)
         html lang="en" {
             head {
                 meta charset="utf-8";
-                title { "About - Rasuti Notes" }
+                title { "About - EternaLibre Notes" }
                 style { (PreEscaped(theme.to_css_block())) }
                 style { (PreEscaped(include_str!("../static/style.css"))) }
             }
             body class="about-page" {
-                (render_menu_bar())
+                (render_menu_bar(base))
                 main {
-                    h1 { "Rasuti Notes" }
-                    p { "A server-side rendered Markdown notes application written in Rust." }
-                    p { "Licensed under the GNU General Public License v3.0 or later." }
-                    a href="/" { "Back to notes" }
+                    h1 { "EternaLibre Notes" }
+                    p class="tagline" { "Free notes, forever." }
+                    p {
+                        "A server-side rendered, copyleft Markdown notes application written in Rust. \
+                         A toolkit for making a private notes cloud: run the server yourself, \
+                         on your own hardware, and the notes go nowhere else."
+                    }
+                    p {
+                        "The server binds to all interfaces by default, so you can reach your notes \
+                         from a phone or another machine on your network. It is protected by a TOTP \
+                         code from your authenticator app, and it never talks to a third party."
+                    }
+                    ul class="about-features" {
+                        // Counted from the palette itself. This number was
+                        // previously hardcoded and had drifted to "28" for
+                        // what was really 25 themes.
+                        li {
+                            (format!("{} built-in themes with a full ANSI palette",
+                                crate::themes::PREDEFINED_THEMES.len()))
+                        }
+                        li { "Syntax highlighting for fenced code blocks" }
+                        li { "Notes stored as plain Markdown files on disk" }
+                        li { "TOTP-locked, with no accounts or third-party services" }
+                        li { "Note editing, search, and theming work without JavaScript" }
+                    }
+                    p {
+                        "Licensed under the GNU General Public License v3.0 or later. \
+                         No telemetry, no accounts, no vendor."
+                    }
+                    a href=(base.url("/")) { "Back to notes" }
                 }
                 (render_status_bar(0, theme_name))
             }

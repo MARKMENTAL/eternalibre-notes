@@ -1,15 +1,13 @@
 [package]
-name = "rasuti-notes"
+name = "eternalibre-notes"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "A server-side rendered Markdown notes application in Rust"
+description = "EternaLibre Notes - a server-side rendered, copyleft Markdown notes application"
 
 [dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["fs"] }
 maud = "0.26"
 pulldown-cmark = "0.11"
 serde = { version = "1", features = ["derive"] }
@@ -21,3 +19,10 @@ thiserror = "1"
 percent-encoding = "2"
 clap = { version = "4", features = ["derive"] }
 syntect = "5"
+totp-rs = { version = "6.0.0", features = ["gen_secret", "otpauth"] }
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+rand = "0.10.3"
+
+[dev-dependencies]
+# Integration tests drive the router via `oneshot`.
+tower = { version = "0.5", features = ["util"] }
