@@ -86,7 +86,7 @@ button, input, select, textarea {
   top: calc(100% - 4px);
   left: 0;
   min-width: 180px;
-  /* The Theme menu has 34 entries; cap the height so it cannot run off
+  /* The Theme menu has 40 entries; cap the height so it cannot run off
      the bottom of the viewport (body has overflow: hidden). */
   max-height: calc(100dvh - 48px);
   overflow-y: auto;

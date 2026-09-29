@@ -85,7 +85,7 @@ eternalibre-notes/
 │   ├── notes.rs                # Note model + file-system persistence
 │   ├── markdown.rs             # Markdown → HTML with code block interception
 │   ├── syntax.rs               # syntect engine + per-theme tmTheme generation
-│   ├── themes.rs               # 34 predefined themes + CSS variable engine
+│   ├── themes.rs               # 40 predefined themes + CSS variable engine
 │   └── storage.rs              # Storage re-export module
 ├── static/
 │   ├── alpine.min.js           # Vendored Alpine.js
@@ -121,7 +121,9 @@ pub struct ANSIPalette {
 }
 ```
 
-`PREDEFINED_THEMES` contains 34 alphabetically ordered themes: Amber on Black, Autumn Forest, Blueberry on Black, Breeze, Breeze Dark, Chartreuse on Black, Classic Windows 95, Cyan on Black, Cyberpunk 2077, Dark, Dracula, Foggy Morning, Gruvbox Dark, Gruvbox Light, Light, Lilac Paper, Lime Green on Black, Monokai, Nord, One Dark, Orchid Noir, Platinum Desktop, Red on Black, Rose Quartz, Solarized Dark, Solarized Light, Spring Blossom, Stormy Night, Summer Sunset, Tokyo Night, Velvet Dusk, Vista Aero, Windows XP, and Winter Frost.
+`PREDEFINED_THEMES` contains 40 alphabetically ordered themes: Amber on Black, Autumn Forest, Blueberry on Black, Blueberry Professional, Breeze, Breeze Dark, Chartreuse on Black, Classic Windows 95, Claude, Cyan on Black, Cyberpunk 2077, Dark, Debian Professional, Dracula, Foggy Morning, Gentoo, Gentoo Professional, Golden Hour, Gruvbox Dark, Gruvbox Light, Light, Lilac Paper, Lime Green on Black, Monokai, Nord, One Dark, Orchid Noir, Platinum Desktop, Red on Black, Rose Quartz, Solarized Dark, Solarized Light, Stormy Night, Summer Sunset, Tokyo Night, Ubuntu Professional, Velvet Dusk, Vista Aero, Windows XP, and Winter Frost.
+
+The Gentoo palette is ported from Konsole: `Background` and `Foreground` supply `bg` and `fg`, `Color0`–`Color7` map to `ansi_normal`, and `Color0Intense`–`Color7Intense` map to `ansi_bright`. The Konsole `Faint` variants and terminal wallpaper/opacity options have no corresponding fields in `Theme` and are not represented.
 
 "Sunny Day" was removed: a mid-green background with a pale yellow foreground left almost nothing legible on it, and no amount of syntax tuning rescues a palette that bad.
 
@@ -176,6 +178,8 @@ fn button_colors(&self, accent: usize) -> (&'static str, &'static str) {
 
 Themes that previously used `#0000ff` on a pure black background were also corrected at the source: that slot is now `#a9a9f9` in the affected palettes (Cyan on Black, Red on Black, Lime Green on Black, Chartreuse on Black, and Amber on Black).
 
+Gentoo intentionally preserves Konsole's `#6f5fa2` bright blue-violet exactly. Its contrast against the current dark `#0c0c0c` button text is only 3.57:1, so `button_colors(4)` uses white text on that button (5.48:1) without changing the ANSI palette.
+
 ---
 
 ## 6. Syntax Highlighting
@@ -222,7 +226,7 @@ Where no candidate clears the floor, the palette is at fault, not the code. **So
 
 Comments also carry `fontStyle: italic` in the tmTheme, which syntect renders as `font-style:italic` on the span. Color alone is not a reliable signal, since a comment that falls back to the foreground is by definition the same color as the prose.
 
-The three failure modes are each pinned by a test, and each test was verified to fail when the corresponding bug is reintroduced: `comments_are_readable_in_every_theme`, `no_theme_uses_its_background_for_comments`, and `comments_stay_distinct_from_the_foreground_when_they_can`. `syntax_color_always_picks_the_more_readable_variant` additionally pins the selection rule itself across all 34 themes and all 8 slots.
+The three failure modes are each pinned by a test, and each test was verified to fail when the corresponding bug is reintroduced: `comments_are_readable_in_every_theme`, `no_theme_uses_its_background_for_comments`, and `comments_stay_distinct_from_the_foreground_when_they_can`. `syntax_color_always_picks_the_more_readable_variant` additionally pins the selection rule itself across all 40 themes and all 8 slots.
 
 ### The Light theme has a data ceiling, not a logic bug
 
@@ -248,7 +252,7 @@ Implementation notes:
 
 > **Do not reintroduce `overflow`, `transform`, `filter`, or `opacity` on `.menu-bar`, `.menu-list`, or `.menu-item`.** `overflow` on the dropdown *itself* is safe (it only clips its own contents), but on an ancestor it traps the dropdown.
 
-The 34-entry Theme menu can exceed the viewport height, so its `.menu-dropdown` carries `max-height` plus `overflow-y: auto`. The short File dropdown is the exception: `.file-menu-dropdown` uses `overflow: visible` so the Export Note As flyout can escape to the right; scrolling is confined to the flyout itself. Keep overflow off the menu-bar ancestors.
+The 40-entry Theme menu can exceed the viewport height, so its `.menu-dropdown` carries `max-height` plus `overflow-y: auto`. The short File dropdown is the exception: `.file-menu-dropdown` uses `overflow: visible` so the Export Note As flyout can escape to the right; scrolling is confined to the flyout itself. Keep overflow off the menu-bar ancestors.
 
 ### Every screen needs a viewport meta, or the mobile CSS is dead
 
@@ -269,7 +273,7 @@ The trap is that the CSS is *correct and present*. You can add a complete mobile
 
 **Its version and theme counts are derived, never typed.** The version comes from `env!("CARGO_PKG_VERSION")`, and the same macro drives the `.app-title` in the menu bar — which previously carried a hand-written `"v0.1"` that had already drifted from the crate's `0.1.0`. The theme line is `PREDEFINED_THEMES.len()` split by `Theme::is_dark()`, so adding or removing a palette needs no edit here. Both are pinned by `about_page_reports_the_manifest_version` and `about_page_theme_counts_come_from_the_palette`.
 
-`Theme::is_dark` classifies on the local gamma-encoded `relative_luminance` rather than the linearised one in `syntax.rs`. That is safe *only* because the shipped palettes are strongly bimodal: the lightest dark background scores 0.095 and the darkest light one 0.63, so any threshold in that gap agrees. If a future palette lands near 0.5, switch this to the WCAG function rather than nudging the threshold — the two agree on all 34 themes today, so the current answer is not a close call.
+`Theme::is_dark` classifies on the local gamma-encoded `relative_luminance` rather than the linearised one in `syntax.rs`. That is safe *only* because the shipped palettes are strongly bimodal: the lightest dark background scores 0.095 and the darkest light one 0.63, so any threshold in that gap agrees. If a future palette lands near 0.5, switch this to the WCAG function rather than nudging the threshold — the two agree on all 40 themes today, so the current answer is not a close call.
 
 **Every outbound link carries `rel="noopener noreferrer"`.** These are the only links that leave the machine, and the app advertises that it never talks to a third party. `about_page_external_links_are_hardened` walks every `<a href="https://` in the rendered page, so a link added later without the attributes fails rather than shipping quietly. It caught the Help menu's GPL link, which had `target="_blank"` and no `rel`.
 

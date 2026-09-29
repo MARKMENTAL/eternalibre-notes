@@ -22,7 +22,7 @@ authenticator app. No telemetry, no accounts, no third-party services.
 - **Alpine.js enhancements** — live Markdown preview, instant search, keyboard shortcuts
 - **File-based storage** — notes are persisted as Markdown files in `notes/`
 - **Per-note exports** — download Markdown or self-contained themed HTML, or print/save the themed note as PDF
-- **34 built-in themes** — including KDE Breeze, classic desktop homages, lavender and rose palettes, Solarized, Dracula, and more
+- **40 built-in themes** — including KDE Breeze, Blueberry Professional, classic desktop homages, distro-inspired palettes, warm neutrals, and more
 - **Markdown extras** — tables, tasklists, strikethrough, and footnotes via `pulldown-cmark`
 - **Syntax highlighting** — code blocks are highlighted using the current theme's ANSI palette via `syntect`
 - **Mobile responsive** — collapses to a Notes/Write/Preview tab layout on phones, with 44px touch targets
@@ -37,7 +37,7 @@ cargo run
 cargo run -- --host 127.0.0.1 --port 8080
 
 # Serve behind a reverse proxy at a subdirectory
-cargo run -- --base-path /forgejo
+cargo run -- --base-path /el-notes
 ```
 
 Then open http://127.0.0.1:3000 (or your chosen address).
@@ -48,9 +48,9 @@ Notes are stored in the `notes/` directory as `.md` files with YAML frontmatter.
 
 EternaLibre Notes is locked with TOTP. Because the server binds `0.0.0.0` by default, a code is required before any note can be read.
 
-**First launch:** the server prints a QR code to your terminal and waits for a 6-digit code. Scan it with any TOTP authenticator (oathtool, Aegis, Bitwarden, 1Password, …), or type the Base32 secret by hand if you would rather not scan. Only after a valid code is the secret committed to `.totp_secret` in the project root with mode `0600` — and only then does the port start listening.
+**First launch:** the server prints a QR code to your terminal and waits for a 6-digit code. Scan it with any TOTP authenticator (FreeOTP, Aegis, Bitwarden, Google Authenticator, …), or type the Base32 secret by hand if you would rather not scan. Only after a valid code is the secret committed to `.totp_secret` in the project root with mode `0600` — and only then does the port start listening.
 
-Enrolment deliberately happens in the terminal rather than on a web page. There is no `/setup` route to reach: an HTTP-reachable setup endpoint would let anyone who can reach the port before you finish claim the device.
+Enrollment deliberately happens in the terminal rather than on a web page. There is no `/setup` route to reach: an HTTP-reachable setup endpoint would let anyone who can reach the port before you finish claim the device.
 
 **Every launch after that:** you land on `/login` and need a current code. Sessions last one hour and live only in memory, so restarting the server invalidates them.
 
@@ -67,7 +67,7 @@ There is no recovery-code fallback by design — that file is the only thing hol
 To serve at a subdirectory, pass `--base-path`:
 
 ```bash
-cargo run -- --base-path /forgejo
+cargo run -- --base-path /el-notes
 ```
 
 ```apache
@@ -118,13 +118,13 @@ cargo fmt
 | `src/main.rs` | Server entry point, CLI parsing, first-run terminal setup |
 | `src/lib.rs` | Library root, so `tests/` can drive the HTTP layer |
 | `src/auth.rs` | TOTP secret, session store, and verification |
-| `src/setup.rs` | First-run terminal enrolment |
+| `src/setup.rs` | First-run terminal enrollment |
 | `src/routes.rs` | HTTP routes, auth gate, base-path joining |
 | `src/pages.rs` | Maud SSR templates and URL generation |
 | `src/notes.rs` | Note model and file-system persistence |
 | `src/markdown.rs` | Markdown to HTML with syntax highlighting |
 | `src/syntax.rs` | syntect integration and per-theme syntax color scheme generation |
-| `src/themes.rs` | 34 predefined themes and CSS variable engine |
+| `src/themes.rs` | 40 predefined themes and CSS variable engine |
 | `static/style.css` | Full application stylesheet |
 | `static/app.js` | Alpine.js component: preview, search, menus, tabs |
 | `tests/auth_gating.rs` | End-to-end tests for the TOTP auth gate |
@@ -135,3 +135,4 @@ This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version. See `LICENSE` for the full text.
+

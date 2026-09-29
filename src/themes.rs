@@ -70,7 +70,7 @@ impl Theme {
     /// any threshold in that gap returns the same answer. That margin is why
     /// this can use the local gamma-encoded `relative_luminance` rather than
     /// the linearised one in `syntax.rs` — for a binary split the two agree
-    /// on all 34 themes, and adding a third implementation would cost more
+    /// on all 40 themes, and adding a third implementation would cost more
     /// than the precision is worth.
     pub fn is_dark(&self) -> bool {
         relative_luminance(self.bg) < 0.5
@@ -80,7 +80,11 @@ impl Theme {
         // Use the bright variant of the accent color if it has decent luminance;
         // otherwise fall back to the theme foreground color so text remains readable.
         let bright = self.ansi_bright[accent];
-        if relative_luminance(bright) < 0.15 {
+        if self.name == "Gentoo" && accent == 4 {
+            // Gentoo keeps Konsole's exact ANSI blue-violet, but that accent
+            // needs a light label to maintain readable primary-button text.
+            (bright, "#ffffff")
+        } else if relative_luminance(bright) < 0.15 {
             (self.fg, self.bg)
         } else {
             (bright, self.bg)
@@ -134,6 +138,17 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
+        name: "Blueberry Professional",
+        fg: "#263247",
+        bg: "#f4efe6",
+        ansi_normal: [
+            "#f4efe6", "#9d4d47", "#58734f", "#8c6a2f", "#356a9a", "#735c89", "#347b83", "#263247",
+        ],
+        ansi_bright: [
+            "#857d75", "#873d3a", "#4d6545", "#75531f", "#2d5e8b", "#624977", "#28666f", "#1d2634",
+        ],
+    },
+    Theme {
         name: "Breeze",
         fg: "#232629",
         bg: "#eff0f1",
@@ -178,6 +193,17 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
+        name: "Claude",
+        fg: "#3c3530",
+        bg: "#f4efe6",
+        ansi_normal: [
+            "#f4efe6", "#a85245", "#66754f", "#9b7132", "#c56f52", "#84607a", "#4f7a78", "#3c3530",
+        ],
+        ansi_bright: [
+            "#8a8175", "#963f35", "#52603f", "#79551f", "#a85137", "#704d66", "#3d6866", "#27211d",
+        ],
+    },
+    Theme {
         name: "Cyan on Black",
         fg: "#00ffff",
         bg: "#000000",
@@ -211,6 +237,17 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
+        name: "Debian Professional",
+        fg: "#342a29",
+        bg: "#f7f1e9",
+        ansi_normal: [
+            "#f7f1e9", "#b34e56", "#5d704d", "#96702c", "#b24d57", "#805c75", "#3e7673", "#342a29",
+        ],
+        ansi_bright: [
+            "#817a76", "#9e3d48", "#4d6140", "#78561d", "#9b3643", "#6d4963", "#326764", "#241c1b",
+        ],
+    },
+    Theme {
         name: "Dracula",
         fg: "#f8f8f2",
         bg: "#282a36",
@@ -230,6 +267,39 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
         ansi_bright: [
             "#607d8b", "#78909c", "#90a4ae", "#b0bec5", "#cfd8dc", "#eceff1", "#f5f5f5", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Gentoo",
+        fg: "#9b86e3",
+        bg: "#0c0c0c",
+        ansi_normal: [
+            "#0c0c0c", "#c50f1f", "#13a10e", "#c19c00", "#61538d", "#881798", "#00aaff", "#cccccc",
+        ],
+        ansi_bright: [
+            "#7c7c7c", "#e74856", "#16c60c", "#f9f1a5", "#6f5fa2", "#b4009e", "#0094de", "#f2f2f2",
+        ],
+    },
+    Theme {
+        name: "Gentoo Professional",
+        fg: "#eee7f3",
+        bg: "#211b28",
+        ansi_normal: [
+            "#211b28", "#c97874", "#91a47a", "#c8a66b", "#806a9c", "#b47ca7", "#70aaa7", "#eee7f3",
+        ],
+        ansi_bright: [
+            "#6c6270", "#e28b83", "#a3b68b", "#e0bf82", "#a08bbc", "#d099bc", "#83c3bd", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Golden Hour",
+        fg: "#f5e8c9",
+        bg: "#211a12",
+        ansi_normal: [
+            "#211a12", "#d06b52", "#a4a06a", "#a38334", "#b98c37", "#a584a5", "#6f9d98", "#f5e8c9",
+        ],
+        ansi_bright: [
+            "#6b5b43", "#ee8468", "#bab981", "#e0c16f", "#d6a84f", "#c09cc1", "#88b8ae", "#fff3db",
         ],
     },
     Theme {
@@ -387,17 +457,6 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
     },
     Theme {
-        name: "Spring Blossom",
-        fg: "#ffb7c5",
-        bg: "#2d5016",
-        ansi_normal: [
-            "#2d5016", "#c2185b", "#7cb342", "#fbc02d", "#00897b", "#d81b60", "#aed581", "#f8bbd0",
-        ],
-        ansi_bright: [
-            "#558b2f", "#e91e63", "#8bc34a", "#ffeb3b", "#009688", "#ec407a", "#c5e1a5", "#fce4ec",
-        ],
-    },
-    Theme {
         name: "Stormy Night",
         fg: "#b0bec5",
         bg: "#263238",
@@ -428,6 +487,17 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
         ansi_bright: [
             "#414868", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#c0caf5",
+        ],
+    },
+    Theme {
+        name: "Ubuntu Professional",
+        fg: "#302a34",
+        bg: "#f7f2ea",
+        ansi_normal: [
+            "#f7f2ea", "#ad4838", "#526f4d", "#976b2a", "#bc5227", "#6d3b69", "#367777", "#302a34",
+        ],
+        ansi_bright: [
+            "#827b78", "#963d30", "#466242", "#79531c", "#a54018", "#5d2d58", "#2c6666", "#211c25",
         ],
     },
     Theme {
@@ -531,18 +601,13 @@ mod tests {
     }
 
     #[test]
-    fn sunny_day_is_gone() {
-        // Removed: a green background with a pale yellow foreground left
-        // almost nothing readable on it.
+    fn removed_themes_are_absent_and_catalog_count_is_current() {
         assert!(
             !PREDEFINED_THEMES.iter().any(|t| t.name == "Sunny Day"),
             "Sunny Day should have been deleted"
         );
-        // Dropping a palette shrinks the Theme menu, so the docs and the
-        // about page count have to move with it. This assertion caught the
-        // count being wrong in the docs before this change: they claimed 28
-        // for what was really 24.
-        assert_eq!(PREDEFINED_THEMES.len(), 34);
+        assert!(!PREDEFINED_THEMES.iter().any(|t| t.name == "Spring Blossom"));
+        assert_eq!(PREDEFINED_THEMES.len(), 40);
     }
 
     #[test]
@@ -564,6 +629,61 @@ mod tests {
         assert!(get_theme("Orchid Noir").is_dark());
         assert_eq!(get_theme("Rose Quartz").ansi_bright[4], "#9b3157");
         assert_eq!(get_theme("Orchid Noir").ansi_bright[5], "#ff86c3");
+    }
+
+    #[test]
+    fn gentoo_theme_preserves_konsole_palette_and_uses_white_button_text() {
+        let gentoo = get_theme("Gentoo");
+        assert!(gentoo.is_dark());
+        assert_eq!(gentoo.bg, "#0c0c0c");
+        assert_eq!(gentoo.fg, "#9b86e3");
+        assert_eq!(
+            gentoo.ansi_normal,
+            [
+                "#0c0c0c", "#c50f1f", "#13a10e", "#c19c00", "#61538d", "#881798", "#00aaff",
+                "#cccccc",
+            ]
+        );
+        assert_eq!(
+            gentoo.ansi_bright,
+            [
+                "#7c7c7c", "#e74856", "#16c60c", "#f9f1a5", "#6f5fa2", "#b4009e", "#0094de",
+                "#f2f2f2",
+            ]
+        );
+
+        let (button_bg, button_fg) = gentoo.button_colors(4);
+        assert_eq!(button_bg, "#6f5fa2");
+        assert_eq!(button_fg, "#ffffff");
+        assert_eq!(gentoo.button_colors(1), ("#e74856", "#0c0c0c"));
+        assert!(gentoo.to_css_block().contains("--btn-primary-fg: #ffffff;"));
+    }
+
+    #[test]
+    fn warm_and_distro_themes_have_distinct_light_dark_palettes() {
+        assert!(!get_theme("Claude").is_dark());
+        assert!(get_theme("Golden Hour").is_dark());
+        assert!(!get_theme("Ubuntu Professional").is_dark());
+        assert!(!get_theme("Debian Professional").is_dark());
+        assert!(get_theme("Gentoo Professional").is_dark());
+
+        assert_eq!(get_theme("Claude").ansi_bright[4], "#a85137");
+        assert_eq!(get_theme("Golden Hour").ansi_bright[4], "#d6a84f");
+        assert_eq!(get_theme("Ubuntu Professional").ansi_bright[4], "#a54018");
+        assert_eq!(get_theme("Debian Professional").ansi_bright[4], "#9b3643");
+        assert_eq!(get_theme("Gentoo Professional").ansi_bright[4], "#a08bbc");
+    }
+
+    #[test]
+    fn blueberry_professional_is_a_light_neutral_blueberry_variant() {
+        let theme = get_theme("Blueberry Professional");
+        assert!(!theme.is_dark());
+        assert_eq!(theme.bg, "#f4efe6");
+        assert_eq!(theme.fg, "#263247");
+        assert_eq!(theme.ansi_bright[4], "#2d5e8b");
+        assert!(PREDEFINED_THEMES
+            .iter()
+            .any(|candidate| candidate.name == "Blueberry on Black"));
     }
 
     #[test]

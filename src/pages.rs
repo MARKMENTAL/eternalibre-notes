@@ -576,7 +576,7 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                         li {
                             (format!(
                                 "{} built-in themes ({} dark, {} light) with a full \
-                                 ANSI palette — Solarized, Dracula, KDE Breeze, Lilac Paper, and more",
+                                 ANSI palette — Solarized, Dracula, KDE Breeze, Gentoo, and more",
                                 themes.len(),
                                 dark_themes,
                                 themes.len() - dark_themes,
