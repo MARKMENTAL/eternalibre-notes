@@ -70,8 +70,8 @@ cargo run -- --base-path /forgejo
 ```
 
 ```apache
-ProxyPass        /forgejo/  http://127.0.0.1:3000/  timeout=10
-ProxyPassReverse /forgejo/  http://127.0.0.1:3000/
+ProxyPass        /el-notes/  http://127.0.0.1:3000/  timeout=10
+ProxyPassReverse /el-notes/  http://127.0.0.1:3000/
 ```
 
 The proxy strips the prefix, so the app still sees ordinary paths and adds the prefix back when generating links, form actions, and redirects. The session cookie's `Path` is scoped to the prefix, so the token is not sent to sibling apps on the same host.

@@ -720,6 +720,60 @@ async fn every_screen_declares_a_viewport() {
     }
 }
 
+/// `app.js` is inlined into the page, so it cannot call the server-side
+/// `base.url()` helper. Its one `fetch()` has to build the URL itself, which
+/// is what `window.__BASE_PATH__` is for.
+///
+/// Without it, `fetch('/preview')` resolves against the origin root. Behind
+/// a reverse proxy mounted at a subdirectory that never reaches the app, and
+/// the proxy's own 404 body gets swapped into the preview pane. The symptom
+/// is a preview pane full of "404 Not Found" while typing.
+#[tokio::test]
+async fn the_base_path_is_handed_to_client_side_js() {
+    // With a base path set, the browser must be told about it.
+    let f = Fixture::with_base_path("base-js", "/forgejo")
+        .login_over_http()
+        .await;
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    // Backtick template literal, matching the `__INITIAL_PREVIEW__` line
+    // above it and escaped by the same `escape_js` helper.
+    assert!(
+        body.contains("window.__BASE_PATH__ = `/forgejo`;"),
+        "client JS should be handed the base path"
+    );
+
+    // Without one, the value must be empty rather than the string "undefined",
+    // so the fetch URL stays byte-identical to the pre-fix behaviour.
+    let plain = Fixture::fresh("base-js-none").login_over_http().await;
+    let (status, body) = plain.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("window.__BASE_PATH__ = ``;"),
+        "with no base path the client value should be empty"
+    );
+}
+
+/// The `fetch()` in `app.js` must actually use the injected value. This is
+/// the assertion that would have caught the original bug: `app.js` is
+/// inlined verbatim, so a regression there is invisible to every other test.
+#[tokio::test]
+async fn the_preview_fetch_uses_the_injected_base_path() {
+    let f = Fixture::with_base_path("fetch-base", "/forgejo")
+        .login_over_http()
+        .await;
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("fetch(base + '/preview'"),
+        "app.js should build the preview URL from __BASE_PATH__"
+    );
+    assert!(
+        !body.contains("fetch('/preview'"),
+        "app.js must not hardcode an origin-absolute /preview"
+    );
+}
+
 /// The about page advertises a version, and it must be the one in
 /// `Cargo.toml`.
 ///

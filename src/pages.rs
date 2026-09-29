@@ -21,6 +21,17 @@ impl<'a> Base<'a> {
     pub fn url(&self, path: &str) -> String {
         format!("{}{}", self.0, path)
     }
+
+    /// The raw prefix, for handing to client-side JS.
+    ///
+    /// `url()` covers every URL in the rendered markup. This exists for the
+    /// one `fetch()` in `app.js`, which has to build the URL client-side and
+    /// would otherwise resolve `/preview` against the origin root — behind a
+    /// reverse proxy mounted at a subdirectory that misses the app entirely
+    /// and returns the proxy's own 404.
+    pub fn prefix(&self) -> &str {
+        self.0
+    }
 }
 
 pub fn render_app(
@@ -72,6 +83,7 @@ pub fn render_app(
                 (render_status_bar(notes.len(), theme_name))
                 script {
                     "window.__INITIAL_PREVIEW__ = `" (PreEscaped(escape_js(&rendered_preview))) "`;"
+                    "window.__BASE_PATH__ = `" (PreEscaped(escape_js(base.prefix()))) "`;"
                     (PreEscaped(include_str!("../static/app.js")))
                 }
             }

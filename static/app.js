@@ -53,7 +53,16 @@ function app() {
         const formData = new URLSearchParams();
         formData.append('content', content);
 
-        fetch('/preview', {
+        // The base path has to be prepended here. `app.js` is inlined into
+        // the page, so it cannot call the server-side `base.url()` helper
+        // that every form action uses — and an origin-absolute `/preview`
+        // resolves against the site root, which behind a reverse proxy
+        // mounted at a subdirectory never reaches the app. The response body
+        // would then be the proxy's own 404, swapped straight into the
+        // preview pane.
+        const base = window.__BASE_PATH__ || '';
+
+        fetch(base + '/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: formData.toString()

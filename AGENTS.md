@@ -383,7 +383,18 @@ Consequences that are easy to get wrong:
 - **Cookie `Path` is scoped to the prefix** (`Path=/forgejo`), so the session token is not sent to sibling apps on the same host. At the root it is `/`, the default-path.
 - **Static assets stay app-absolute** (`nest_service("/static")` in `routes::app`). This is the one place the base path is *not* applied, and getting it wrong is subtle: the asset 404s, `x-data="app()"` never initialises, and every Alpine directive — including the File menu dropdowns — silently stops working. There is a test asserting `GET /static/app.js` returns 200 while a base path is set. `app.js` is inlined via `include_str!` and has no URL to rewrite; only `alpine.min.js` and `style.css` are externally loaded.
 - **Curl will 404 on prefixed paths.** Hitting `http://host:3000/forgejo/login` directly bypasses Apache, so nothing strips the prefix. Test through the proxy, or curl the app-absolute path.
-- **Never hardcode a path in JS.** `static/app.js` matches the new-note form with `form[action$="/notes"]` rather than an exact attribute, so `Ctrl+N` keeps working under any prefix.
+- **Never hardcode a path in JS.** `static/app.js` matches the new-note form with `form[action$="/notes"]` rather than an exact attribute, so `Ctrl+N` keeps working under any prefix. The one `fetch()` it makes is different, because the rule above does not cover it:
+
+  ```javascript
+  const base = window.__BASE_PATH__ || '';
+  fetch(base + '/preview', { ... });
+  ```
+
+  `app.js` is inlined into the page, so it cannot call the server-side `base.url()` helper that every form action and asset `src` uses. A literal `fetch('/preview')` resolves against the *origin root*, which behind a proxy mounted at `/forgejo/` never reaches the app. The failure is nasty because the proxy returns its own 404 body, which `x-html` then swaps straight into the preview pane — the user sees "404 Not Found" in the middle of their document while typing, with nothing in the server logs to explain it. `render_app` therefore injects `window.__BASE_PATH__` next to `__INITIAL_PREVIEW__`, escaped by the same `escape_js` helper and emitted as a backtick literal like its neighbour.
+
+  Pinned by `the_base_path_is_handed_to_client_side_js` and `the_preview_fetch_uses_the_injected_base_path` in `tests/auth_gating.rs`. The second matters most: `app.js` is inlined verbatim, so a regression there is invisible to every other test in the suite.
+
+- **A redirect target is not a forwarded path.** A `303` to `{base}/` is correct for the browser and 404s if you curl it directly, because nothing strips the prefix. This also bites reverse-proxy test harnesses: a proxy built on `urllib`/`requests` will silently follow the redirect, re-resolve it against the upstream root, and return a 404 that looks like an app bug. Disable redirect following when testing through a proxy.
 
 ---
 
