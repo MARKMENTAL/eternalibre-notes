@@ -14,7 +14,7 @@ The name splits into its two halves: **Eterna** for permanence and **Libre** for
 * **Mission**: Reclaiming high-performance Rust web development under copyleft terms (GPLv3+). Rejecting heavy client-side JavaScript frameworks and proprietary note silos in favor of software freedom, privacy, and near-zero memory footprint.
 * **UI Paradigm**: **"Apple Elegance meets Classic Desktop GUI"**
 * **Apple Notes Polish**: Fluid sidebars, smooth note item previews, refined typography, generous padding, subtle contrast, and graceful theme transitions.
-* **Traditional Desktop Utility**: Top menu bar (`File`, `Edit`, `View`, `Theme`, `Help`), quick action toolbars, split-pane resizers, keyboard shortcuts, and visible document state.
+* **Traditional Desktop Utility**: Top menu bar (`File`, `Edit`, `View`, `Theme`, `Help`), quick action toolbars, collapsible editor/preview panes, keyboard shortcuts, and a status bar. Panes are not draggable/resizable.
 
 ---
 
@@ -24,9 +24,9 @@ The application layout follows a classic 3-column / top-menu layout rendered cle
 
 ```
 +-----------------------------------------------------------------------------------+
-|  [File] [Edit] [View] [Theme] [Help]        [EternaLibre Notes v0.1]                  |  <-- Classic Menu Bar
+|  [File] [Edit] [View] [Theme] [Help]        [EternaLibre Notes v{CARGO_PKG_VERSION}] |  <-- Classic Menu Bar; version is manifest-derived
 +-----------------------------------------------------------------------------------+
-|  [+ New Note]  [Delete] |  Search...                  | Theme: [ Dark v ] [Preview] |  <-- Apple-style Toolbar
+|  [+ New Note]  [Delete] |  Search...                  | Theme: [ Dark v ]             |  <-- Apple-style Toolbar
 +-------------------+-----------------------------------+---------------------------+
 | Sidebar           | Editor Pane                       | Live Preview Pane         |
 | ----------------- | --------------------------------- | ------------------------- |
@@ -46,7 +46,9 @@ The application layout follows a classic 3-column / top-menu layout rendered cle
 1. **Fluid Typography**: Inter/SF Pro or high-quality system sans-serif for the interface; Monospace for Markdown source; clean sans for HTML preview.
 2. **Subtle Elevation & Borders**: Soft 1px borders using `--ui-border` / `--app-bg` contrast shades rather than heavy drop shadows.
 3. **Apple-style Note List**: Sidebar lists show note title, relative timestamp, and a single line preview snippet in muted text.
-4. **Progressive Enhancement**: Note editing, search, theming, and the login form all work with JavaScript disabled, via HTML forms and page reloads. Three things are JS-dependent by design: the menu bar (dropdowns open from an Alpine-driven `.open` class), the mobile tab bar, and live preview.
+4. **Progressive Enhancement**: Note editing, server-side search, and the login form work with JavaScript disabled via HTML forms and page reloads. The visible theme selector currently submits through Alpine's change handler, so theme changes from the UI require JavaScript. Menu dropdowns, mobile tab switching, live preview, and automatic opening of the PDF print dialog are also JavaScript-dependent.
+
+The status bar currently displays `Saved` as a static label; it does not track unsaved editor changes. The toolbar has no separate Preview button: Preview is a pane and a mobile tab.
 
 ---
 
@@ -59,13 +61,15 @@ The application layout follows a classic 3-column / top-menu layout rendered cle
 * **Reactivity / Live Swap**: **Alpine.js 3.14** (vendored locally in `static/`, ~15 KB)
 * **Markdown Engine**: `pulldown-cmark` (with table, tasklist, strikethrough, and footnote extensions)
 * **Syntax Highlighting**: `syntect` 5 (for fenced code blocks, themed per active palette)
-* **Serialization**: `serde` / `serde_json`
+* **Serialization**: `serde` derives for note models
 * **Dates**: `chrono`
 * **IDs**: `uuid` v4
-* **Error Handling**: `anyhow` for application errors, `thiserror` for library-style errors
+* **Error Handling**: `anyhow` plus the local `AppError` response wrapper. `thiserror` is declared in `Cargo.toml` but is currently unused.
 * **CLI Parsing**: `clap` 4 (derive API)
-* **Static Assets**: `tower-http` `ServeDir` for `/static`
+* **Static Assets**: Alpine.js is embedded with `include_bytes!` and served at `/static/alpine.min.js`; `app.js` is embedded and inlined in the notes app page, while `style.css` is embedded and inlined in rendered HTML documents. There is no `ServeDir` or general `/static/*` route.
 * **License**: **GNU General Public License v3.0 or later** (`GPL-3.0-or-later`). All dependency crates in `Cargo.toml` must be compatible with GPLv3+.
+
+`serde_json`, `thiserror`, and `percent-encoding` are currently declared direct dependencies with no references in `src/`; verify whether they are needed before treating them as active runtime components.
 
 ### Actual Project Structure
 
@@ -129,7 +133,7 @@ The Gentoo palette is ported from Konsole: `Background` and `Foreground` supply 
 
 ### Theme Selection
 
-The active theme is stored in a `theme` cookie. The server reads it from the `Cookie` header on every request and injects the matching CSS variable block into the `<head>`. No JavaScript is required to change themes — a plain `<form method="post" action="/theme">` sets a new cookie and redirects.
+The active theme is stored in a `theme` cookie. The server reads it from the `Cookie` header on every request and injects the matching CSS variable block into the `<head>`. The `/theme` route is a plain POST form endpoint, but the rendered theme selector currently submits via Alpine's `x-on:change` handler and the Theme menu itself requires JavaScript; there is no no-JavaScript theme-change control in the UI.
 
 ---
 
@@ -168,7 +172,9 @@ Some themes ship accent colors that are nearly invisible on their own background
 ```rust
 fn button_colors(&self, accent: usize) -> (&'static str, &'static str) {
     let bright = self.ansi_bright[accent];
-    if relative_luminance(bright) < 0.15 {
+    if self.name == "Gentoo" && accent == 4 {
+        (bright, "#ffffff")
+    } else if relative_luminance(bright) < 0.15 {
         (self.fg, self.bg)
     } else {
         (bright, self.bg)
@@ -243,12 +249,12 @@ Desktop keeps the 3-column grid. At `max-width: 600px` (which covers iPhone 11 a
 Implementation notes:
 * The whole page is a flex column using `height: 100dvh`, so the mobile browser chrome that hides on scroll does not break the layout. This replaced an earlier brittle `calc(100vh - 32px - 44px - 24px)` height calculation.
 * The default tab (`write` when a note is open, `notes` otherwise) is rendered **server-side** onto the correct pane as `mobile-active`, so the layout still works with JavaScript disabled. Alpine only takes over switching afterward.
-* Touch targets are at least 44px tall (Apple HIG minimum). Inputs and textareas use a 16px font size on mobile to prevent iOS Safari zoom-on-focus.
+* Toolbar buttons and tab controls target 44px on mobile, and inputs/textareas use a 16px font size to prevent iOS Safari zoom-on-focus. Menu triggers are 40px minimum and dropdown links are smaller, so the 44px target is not universal.
 * The toolbar wraps rather than overflowing, and `min-width: 0` is set on flex children so they shrink instead of stretching off-screen.
 
 ### CSS Stacking Context Rule
 
-`overflow` on an **ancestor** creates a new stacking context, which traps absolutely positioned descendants. An earlier revision set `overflow-x: auto` on `.menu-list` to allow horizontal menu scrolling, which silently pushed the menu dropdowns *underneath* the toolbar. The fix is `flex-wrap: wrap` with `overflow: visible`.
+Non-visible `overflow` values (such as `auto` or `hidden`) create scroll/clip containers and can clip absolutely positioned descendants; `overflow` does not by itself create a stacking context. `transform`, `filter`, and `opacity` below `1` can create stacking contexts. An earlier revision set `overflow-x: auto` on `.menu-list`, which clipped/obscured menu dropdowns beneath the toolbar. The fix is `flex-wrap: wrap` with `overflow: visible`.
 
 > **Do not reintroduce `overflow`, `transform`, `filter`, or `opacity` on `.menu-bar`, `.menu-list`, or `.menu-item`.** `overflow` on the dropdown *itself* is safe (it only clips its own contents), but on an ancestor it traps the dropdown.
 
@@ -265,13 +271,13 @@ The trap is that the CSS is *correct and present*. You can add a complete mobile
 
 **When a screen's responsive CSS appears to do nothing, check the viewport meta before touching the CSS.**
 
-`render_app`, `render_auth_page`, and `render_about` each render their own `<head>`, so a tag added to one is not inherited by the others. `every_screen_declares_a_viewport` in `tests/auth_gating.rs` checks `/` and `/about` per-screen for this reason; add new screens to that list.
+`render_app`, `render_auth_page`, `render_about`, and `render_note_export` each render their own `<head>`, so a tag added to one is not inherited by the others. Each currently emits a viewport tag. `every_screen_declares_a_viewport` in `tests/auth_gating.rs` currently checks only `/` and `/about`; include `/login` and the HTML/print export documents if expanding that test to cover every rendered screen.
 
 ### The About page is a separate document, not the app shell
 
 `/about` renders its own `<html>` via `render_about` and inlines `style.css` itself. It reuses `render_menu_bar` and `render_status_bar` but has no `.toolbar` and no `.tab-bar`, so its chrome deliberately does not match the notes view.
 
-**Its version and theme counts are derived, never typed.** The version comes from `env!("CARGO_PKG_VERSION")`, and the same macro drives the `.app-title` in the menu bar — which previously carried a hand-written `"v0.1"` that had already drifted from the crate's `0.1.0`. The theme line is `PREDEFINED_THEMES.len()` split by `Theme::is_dark()`, so adding or removing a palette needs no edit here. Both are pinned by `about_page_reports_the_manifest_version` and `about_page_theme_counts_come_from_the_palette`.
+**Its version and theme counts are derived, never typed.** The version comes from `env!("CARGO_PKG_VERSION")`, and the same macro drives the `.app-title` in the menu bar — which previously carried a hand-written version that had drifted from the manifest. The theme line is `PREDEFINED_THEMES.len()` split by `Theme::is_dark()`, so adding or removing a palette needs no edit here. Both are pinned by `about_page_reports_the_manifest_version` and `about_page_theme_counts_come_from_the_palette`.
 
 `Theme::is_dark` classifies on the local gamma-encoded `relative_luminance` rather than the linearised one in `syntax.rs`. That is safe *only* because the shipped palettes are strongly bimodal: the lightest dark background scores 0.095 and the darkest light one 0.63, so any threshold in that gap agrees. If a future palette lands near 0.5, switch this to the WCAG function rather than nudging the threshold — the two agree on all 40 themes today, so the current answer is not a close call.
 
@@ -291,14 +297,20 @@ Menus are opened by **click**, not CSS `:hover`, driven by a single Alpine state
 
 ```javascript
 openMenu: null,
+openSubmenu: null,
 toggleMenu(name) {
   this.openMenu = this.openMenu === name ? null : name;
+  this.openSubmenu = null;
+},
+toggleSubmenu(name, event) {
+  event.stopPropagation();
+  this.openSubmenu = this.openSubmenu === name ? null : name;
 },
 ```
 
-Dropdowns are revealed by a class on the trigger rather than `x-show`, because Alpine's `x-show` works by *removing* an inline `display` when true, at which point the stylesheet's `display: none` would take over again and the menu would stay hidden. Driving it from `.menu-item.open .menu-dropdown` also means the menus stay closed if JavaScript never loads, instead of all five appearing at once.
+Dropdowns are revealed by a class on the trigger rather than `x-show`, because Alpine's `x-show` works by *removing* an inline `display` when true, at which point the stylesheet's `display: none` would take over again and the menu would stay hidden. Top-level menus use `.menu-item.open`; the File export flyout uses `.menu-submenu-list.open`. This also means menus stay closed if JavaScript never loads, instead of all five appearing at once.
 
-**Consequence: the menu bar requires JavaScript.** Since `.open` is applied by Alpine, no dropdown opens without it. This is a deliberate trade-off (see section 2, directive 4) — note CRUD, search, and theming are unaffected. If you change this, keep `.desktop-only` and the `.open` rule consistent; see section 8.
+**Consequence: the menu bar requires JavaScript.** Since `.open` is applied by Alpine, no dropdown opens without it. This is a deliberate trade-off (see section 2, directive 4). Note CRUD and server-side search remain usable without JavaScript, but the visible theme selector and menu-based actions do not. If you change this, keep `.desktop-only`, `.open`, and submenu state consistent.
 
 Outside-click detection is a manual `document` listener in an `init()` hook with a matching `destroy()`. `Escape` closes any open menu.
 
@@ -326,7 +338,7 @@ Outside-click detection is a manual `document` listener in an `init()` hook with
 | `POST` | `/theme` | Sets the `theme` cookie, redirects to `/` |
 | `GET` | `/about` | Static about page |
 | `GET` | `/export` | Downloads all notes as a single Markdown file |
-| `*` | `/static/*` | Vendored Alpine.js, app.js, and style.css |
+| `GET` | `/static/alpine.min.js` | Public, compile-time embedded Alpine.js bundle |
 
 Single-note exports are authentication-gated and always use the saved note on disk; save the editor first to include pending edits. Markdown downloads include the note title as a heading. HTML exports inline both the selected theme variables and application stylesheet, so they remain styled when moved elsewhere. PDF export is a print-ready HTML document that opens the browser's print dialog (choose “Save as PDF”); `print-color-adjust: exact` requests themed backgrounds, though browser print settings may still omit them. No PDF generation dependency is required.
 
@@ -336,7 +348,7 @@ Notes are stored as `<uuid>.md` files in `notes/` with YAML frontmatter carrying
 
 ## 9b. TOTP Authentication
 
-Every route except `/login` and `/logout` sits behind a `route_layer` middleware. This is a hard gate: an unauthenticated caller gets `303` to `/login` and never reaches a handler that could observe note content.
+Every application route except `/login`, `/logout`, and the public `/static/alpine.min.js` asset sits behind a `route_layer` middleware. This is a hard gate: unauthenticated page/form requests get `303` to `/login` and never reach a handler that could observe note content. `/preview` is the deliberate exception to the redirect response and returns `401` for unauthenticated fetches.
 
 ### Enrolment happens in the terminal, not on a page
 
@@ -380,17 +392,19 @@ eternalibre_session=<64 hex chars>; Path=/; HttpOnly; SameSite=Strict; Max-Age=3
 
 `--base-path /forgejo` makes the app answer behind a reverse proxy that mounts it at a subdirectory. Empty (the default) means the site root, which is what most installs use and is unchanged behaviour.
 
-**The app is mounted at the proxy's root.** It receives app-absolute paths (`/about`, not `/forgejo/about`) because `ProxyPass` strips the prefix. The base path is used *only when generating URLs*: hrefs, form actions, the static asset `src`, and every `Location` header.
+**The app is mounted at the proxy's root.** It receives app-absolute paths (`/about`, not `/forgejo/about`) because `ProxyPass` strips the prefix. The base path is used *only when generating URLs*: hrefs, form actions, the browser-facing static asset `src`, and every `Location` header.
 
 ```apache
 ProxyPass        /forgejo/  http://127.0.0.1:3000/  timeout=10
 ProxyPassReverse /forgejo/  http://127.0.0.1:3000/
 ```
 
+For example, the browser requests `/forgejo/static/alpine.min.js`; the matching `ProxyPass` mapping removes `/forgejo/`, so Axum receives `/static/alpine.min.js`. `ProxyPassReverse` is for response URL headers such as redirects; it does not strip the incoming request prefix. The app already creates base-prefixed `Location` values, so verify redirects through the configured proxy rather than assuming the reverse rule constructs them.
+
 Consequences that are easy to get wrong:
 
 - **Cookie `Path` is scoped to the prefix** (`Path=/forgejo`), so the session token is not sent to sibling apps on the same host. At the root it is `/`, the default-path.
-- **Static assets stay app-absolute** (`nest_service("/static")` in `routes::app`). This is the one place the base path is *not* applied, and getting it wrong is subtle: the asset 404s, `x-data="app()"` never initialises, and every Alpine directive — including the File menu dropdowns — silently stops working. There is a test asserting `GET /static/app.js` returns 200 while a base path is set. `app.js` is inlined via `include_str!` and has no URL to rewrite; only `alpine.min.js` and `style.css` are externally loaded.
+- **The upstream asset route is app-absolute, but the browser URL is prefixed.** `Base::url("/static/alpine.min.js")` emits `/forgejo/static/alpine.min.js`; Apache strips the prefix before forwarding it to Axum's `/static/alpine.min.js` route. This is the only `/static` route. `app.js` and `style.css` are inlined via `include_str!`, not served as external assets. A test checks the Alpine route at `/static/alpine.min.js` with a base path configured; there is no `/static/app.js` route.
 - **Curl will 404 on prefixed paths.** Hitting `http://host:3000/forgejo/login` directly bypasses Apache, so nothing strips the prefix. Test through the proxy, or curl the app-absolute path.
 - **Never hardcode a path in JS.** `static/app.js` matches the new-note form with `form[action$="/notes"]` rather than an exact attribute, so `Ctrl+N` keeps working under any prefix. The one `fetch()` it makes is different, because the rule above does not cover it:
 
