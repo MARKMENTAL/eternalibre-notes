@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::auth::{AuthError, AuthState, SESSION_COOKIE};
 use crate::markdown::render_markdown;
 use crate::notes::{self, Note};
-use crate::pages::{self, Base};
+use crate::pages::{self, Base, FolderContext};
 use crate::themes::get_theme;
 
 #[derive(Clone)]
@@ -114,6 +114,7 @@ pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/", get(index))
         .route("/notes", post(create_note_route))
+        .route("/folders", post(create_folder_route))
         .route(
             "/notes/:id",
             get(show_note_route).post(update_or_delete_note_route),
@@ -326,6 +327,8 @@ fn cookie_path(base_path: &str) -> &str {
 #[derive(Deserialize)]
 struct IndexQuery {
     q: Option<String>,
+    folder: Option<String>,
+    error: Option<String>,
 }
 
 async fn index(
@@ -335,6 +338,9 @@ async fn index(
 ) -> Result<impl IntoResponse, AppError> {
     let theme = get_theme_from_cookie(&headers);
     let all_notes = notes::list_notes()?;
+    let folders = notes::list_folders()?;
+
+    let active_folder = query.folder.clone().filter(|f| !f.is_empty());
 
     let notes: Vec<Note> = if let Some(ref q) = query.q {
         let q = q.to_lowercase();
@@ -344,12 +350,29 @@ async fn index(
                 n.title.to_lowercase().contains(&q) || n.content.to_lowercase().contains(&q)
             })
             .collect()
+    } else if let Some(ref f) = active_folder {
+        all_notes
+            .into_iter()
+            .filter(|n| n.folder.as_deref() == Some(f.as_str()))
+            .collect()
     } else {
         all_notes
     };
 
     let base = Base::new(&state.base_path);
-    let html = pages::render_app(&theme, &notes, None, query.q.as_deref(), None, &base);
+    let folder_ctx = FolderContext {
+        folders: &folders,
+        active_folder: active_folder.as_deref(),
+    };
+    let html = pages::render_app(
+        &theme,
+        &notes,
+        &folder_ctx,
+        None,
+        query.q.as_deref(),
+        query.error.as_deref(),
+        &base,
+    );
     Ok(Html(html.into_string()))
 }
 
@@ -362,6 +385,11 @@ async fn show_note_route(
     let theme = get_theme_from_cookie(&headers);
     let note = notes::load_note(&id)?;
     let all_notes = notes::list_notes()?;
+    let folders = notes::list_folders()?;
+
+    // The sidebar follows the note's folder, so opening a note in a folder
+    // keeps the user in that folder's context.
+    let active_folder = note.folder.clone();
 
     let notes: Vec<Note> = if let Some(ref q) = query.q {
         let q = q.to_lowercase();
@@ -371,12 +399,29 @@ async fn show_note_route(
                 n.title.to_lowercase().contains(&q) || n.content.to_lowercase().contains(&q)
             })
             .collect()
+    } else if let Some(ref f) = active_folder {
+        all_notes
+            .into_iter()
+            .filter(|n| n.folder.as_deref() == Some(f.as_str()))
+            .collect()
     } else {
         all_notes
     };
 
     let base = Base::new(&state.base_path);
-    let html = pages::render_app(&theme, &notes, Some(&note), query.q.as_deref(), None, &base);
+    let folder_ctx = FolderContext {
+        folders: &folders,
+        active_folder: active_folder.as_deref(),
+    };
+    let html = pages::render_app(
+        &theme,
+        &notes,
+        &folder_ctx,
+        Some(&note),
+        query.q.as_deref(),
+        None,
+        &base,
+    );
     Ok(Html(html.into_string()))
 }
 
@@ -388,9 +433,52 @@ struct NoteForm {
     _method: String,
 }
 
-async fn create_note_route(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
-    let note = notes::create_note("Untitled", "")?;
+#[derive(Deserialize)]
+struct CreateNoteForm {
+    folder: Option<String>,
+}
+
+async fn create_note_route(
+    State(state): State<AppState>,
+    Form(form): Form<CreateNoteForm>,
+) -> Result<impl IntoResponse, AppError> {
+    let note = notes::create_note("Untitled", "", form.folder)?;
     Ok(Redirect::to(&state.url(&format!("/notes/{}", note.id))))
+}
+
+#[derive(Deserialize)]
+struct FolderForm {
+    name: String,
+}
+
+/// Creates a folder by creating the first note in it.
+///
+/// Folders are virtual — they exist only when a note carries the `[Folder]`
+/// filename prefix — so "creating a folder" means creating a note in it. The
+/// user is redirected to that new note, where they can rename it and start
+/// writing.
+async fn create_folder_route(
+    State(state): State<AppState>,
+    Form(form): Form<FolderForm>,
+) -> Result<impl IntoResponse, AppError> {
+    let folder = match notes::validate_folder_name(&form.name) {
+        Ok(f) => f,
+        Err(e) => {
+            // Redirect back with the error in the query string so the
+            // server-rendered flash message can display it. This keeps the
+            // no-JS guarantee: the form is a plain HTML form, and the error
+            // appears after a normal page reload.
+            let error_msg = e.to_string();
+            let encoded = percent_encoding::utf8_percent_encode(
+                &error_msg,
+                percent_encoding::NON_ALPHANUMERIC,
+            );
+            let redirect_url = state.url(&format!("/?error={encoded}"));
+            return Ok(Redirect::to(&redirect_url).into_response());
+        }
+    };
+    let note = notes::create_note("Untitled", "", Some(folder))?;
+    Ok(Redirect::to(&state.url(&format!("/notes/{}", note.id))).into_response())
 }
 
 async fn update_or_delete_note_route(

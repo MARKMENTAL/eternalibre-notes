@@ -21,6 +21,7 @@ authenticator app. No telemetry, no accounts, no third-party services.
 - **Works without JavaScript** — note editing, search, theming, and the login form are plain HTML; the menus, mobile tabs, and live preview are the JS-dependent parts
 - **Alpine.js enhancements** — live Markdown preview, instant search, keyboard shortcuts
 - **File-based storage** — notes are persisted as Markdown files in `notes/`
+- **Virtual folders** — organize notes into folders without real directories; folders are encoded as `[Folder]uuid.md` filename prefixes
 - **Per-note exports** — download Markdown or self-contained themed HTML, or print/save the themed note as PDF
 - **40 built-in themes** — including KDE Breeze, Blueberry Professional, classic desktop homages, distro-inspired palettes, warm neutrals, and more
 - **Markdown extras** — tables, tasklists, strikethrough, and footnotes via `pulldown-cmark`
@@ -43,6 +44,22 @@ cargo run -- --base-path /el-notes
 Then open http://127.0.0.1:3000 (or your chosen address).
 
 Notes are stored in the `notes/` directory as `.md` files with YAML frontmatter.
+
+## Folders
+
+Notes can be organized into virtual folders without creating real directories on disk. A folder is encoded as a filename prefix:
+
+```
+[Project Notes]550e8400-e29b-41d4-a716-446655440000.md
+```
+
+Root notes (no folder) keep the plain `uuid.md` format. Folders exist only when they contain at least one note — there is no separate folder metadata to manage.
+
+**Creating a folder:** click `+ New Folder` in the sidebar (or File → New Folder in the menu), type a name, and the app creates a new note in that folder and opens it.
+
+**Filtering:** click a folder name in the sidebar to see only that folder's notes. Click **All Notes** to see everything grouped by folder. When a folder is active, the **+ New Note** button creates notes in that folder.
+
+**Validation:** folder names reject path traversal (`..`), shell metacharacters (`;`, `|`, `&`, `$`, backtick, parens, angle brackets), control characters, leading dots, and names over 100 characters. Invalid names show a red flash message at the top of the page.
 
 ## Authentication
 

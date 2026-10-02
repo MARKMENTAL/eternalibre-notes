@@ -3,6 +3,7 @@ use crate::notes::Note;
 use crate::themes::{get_theme, PREDEFINED_THEMES};
 use chrono::{DateTime, Utc};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 /// Base path prefix for generated URLs.
 ///
@@ -34,9 +35,18 @@ impl<'a> Base<'a> {
     }
 }
 
+/// Folder state passed to the app template.
+pub struct FolderContext<'a> {
+    /// All existing folder names, sorted.
+    pub folders: &'a [String],
+    /// The folder currently being viewed, if any.
+    pub active_folder: Option<&'a str>,
+}
+
 pub fn render_app(
     theme_name: &str,
     notes: &[Note],
+    folder_ctx: &FolderContext<'_>,
     current_note: Option<&Note>,
     query: Option<&str>,
     message: Option<&str>,
@@ -69,14 +79,27 @@ pub fn render_app(
             }
             body x-data="app()" x-on:keydown="handleKeydown($event)" {
                 (render_menu_bar(base, current_note))
-                (render_toolbar(current_note, query, theme_name, base))
+                (render_toolbar(
+                    current_note,
+                    query,
+                    theme_name,
+                    folder_ctx.active_folder,
+                    base,
+                ))
                 @if let Some(msg) = message {
-                    div class="flash-message" { (msg) }
+                    div class="flash-message" { "Error: " (msg) }
                 }
                 (render_tab_bar(default_tab))
                 main class="app-body"
                     x-bind:class="{ 'hide-editor': !editorVisible, 'hide-preview': !previewVisible }" {
-                    (render_sidebar(notes, current_note, default_tab, base))
+                    (render_sidebar(
+                        notes,
+                        folder_ctx.folders,
+                        folder_ctx.active_folder,
+                        current_note,
+                        default_tab,
+                        base,
+                    ))
                     (render_editor(current_note, default_tab, base))
                     (render_preview(&rendered_preview, default_tab))
                 }
@@ -261,12 +284,16 @@ fn render_toolbar(
     current_note: Option<&Note>,
     query: Option<&str>,
     theme_name: &str,
+    active_folder: Option<&str>,
     base: &Base<'_>,
 ) -> Markup {
     html! {
         div class="toolbar" {
             div class="toolbar-group" {
                 form action=(base.url("/notes")) method="post" {
+                    @if let Some(folder) = active_folder {
+                        input type="hidden" name="folder" value=(folder);
+                    }
                     button type="submit" class="btn btn-primary" { "+ New Note" }
                 }
                 @if let Some(note) = current_note {
@@ -302,6 +329,8 @@ fn render_toolbar(
 
 fn render_sidebar(
     notes: &[Note],
+    folders: &[String],
+    active_folder: Option<&str>,
     current_note: Option<&Note>,
     default_tab: &str,
     base: &Base<'_>,
@@ -311,29 +340,89 @@ fn render_sidebar(
     } else {
         ""
     };
+
+    // Group notes by folder for the "All Notes" view.
+    let mut unfiled: Vec<&Note> = Vec::new();
+    let mut by_folder: std::collections::BTreeMap<String, Vec<&Note>> =
+        std::collections::BTreeMap::new();
+    for note in notes {
+        match &note.folder {
+            Some(f) => by_folder.entry(f.clone()).or_default().push(note),
+            None => unfiled.push(note),
+        }
+    }
+
     html! {
         aside class={"sidebar" (active)} data-tab-pane="notes"
             x-bind:class="{ 'mobile-active': tab === 'notes' }" {
             div class="sidebar-header" { "Notes" }
+            form action=(base.url("/folders")) method="post" class="new-folder-form" {
+                input type="text" name="name" placeholder="New folder name...";
+                button type="submit" { "+ New Folder" }
+            }
+            ul class="folder-nav" {
+                li class={"nav-item" (if active_folder.is_none() { " active" } else { "" })} {
+                    a href=(base.url("/")) {
+                        span class="nav-label" { "All Notes" }
+                        span class="nav-count" { (notes.len()) }
+                    }
+                }
+                @for folder in folders {
+                    li class={"nav-item" (if active_folder == Some(folder.as_str()) { " active" } else { "" })} {
+                        a href=(folder_url(base, folder)) {
+                            span class="nav-label" { (folder) }
+                            span class="nav-count" { (by_folder.get(folder).map(|v| v.len()).unwrap_or(0)) }
+                        }
+                    }
+                }
+            }
             ul class="note-list" {
                 @if notes.is_empty() {
                     li class="note-item empty" { "No notes yet." }
-                } @else {
-                    @for note in notes {
-                        li class={"note-item " (if current_note.map(|n| n.id == note.id).unwrap_or(false) { "active" } else { "" })}
-                            data-title=(note.title.to_lowercase())
-                            data-content=(note.content.to_lowercase()) {
-                            a href=(base.url(&format!("/notes/{}", note.id))) {
-                                div class="note-title" { (note.title) }
-                                div class="note-meta" { (relative_time(note.updated_at)) }
-                                div class="note-preview" { (note.preview(80)) }
-                            }
+                } @else if active_folder.is_none() {
+                    // Grouped view: unfiled first, then folders alphabetically.
+                    @if !unfiled.is_empty() {
+                        li class="folder-header" { "Unfiled" }
+                        @for note in &unfiled {
+                            (render_note_item(note, current_note, base))
                         }
+                    }
+                    @for (folder, folder_notes) in &by_folder {
+                        li class="folder-header" { (folder) }
+                        @for note in folder_notes {
+                            (render_note_item(note, current_note, base))
+                        }
+                    }
+                } @else {
+                    // Flat view of the active folder.
+                    @for note in notes {
+                        (render_note_item(note, current_note, base))
                     }
                 }
             }
         }
     }
+}
+
+fn render_note_item(note: &Note, current_note: Option<&Note>, base: &Base<'_>) -> Markup {
+    let is_active = current_note.map(|n| n.id == note.id).unwrap_or(false);
+    html! {
+        li class={"note-item " (if is_active { "active" } else { "" })}
+            data-title=(note.title.to_lowercase())
+            data-content=(note.content.to_lowercase()) {
+            a href=(base.url(&format!("/notes/{}", note.id))) {
+                div class="note-title" { (note.title) }
+                div class="note-meta" { (relative_time(note.updated_at)) }
+                div class="note-preview" { (note.preview(80)) }
+            }
+        }
+    }
+}
+
+/// Builds a URL that filters the sidebar to a single folder.
+fn folder_url(base: &Base<'_>, folder: &str) -> String {
+    let encoded = utf8_percent_encode(folder, NON_ALPHANUMERIC).to_string();
+    base.url(&format!("/?folder={encoded}"))
 }
 
 fn render_editor(current_note: Option<&Note>, default_tab: &str, base: &Base<'_>) -> Markup {
@@ -360,6 +449,9 @@ fn render_editor(current_note: Option<&Note>, default_tab: &str, base: &Base<'_>
                         class="note-title-input"
                         placeholder="Note title"
                         value=(note.title);
+                    @if let Some(folder) = &note.folder {
+                        div class="note-folder" { "Folder: " (folder) }
+                    }
                     textarea
                         id="editor"
                         name="content"

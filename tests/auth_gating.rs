@@ -643,6 +643,203 @@ async fn deleting_a_note_requires_authentication() {
     assert_eq!(status, StatusCode::OK);
 }
 
+// ---------------------------------------------------------------- folders ----
+
+#[tokio::test]
+async fn folder_creation_creates_a_note_in_the_folder() {
+    let f = Fixture::provisioned("folder-create");
+    let (status, _, loc) = f.post_authed("/folders", "name=Project+Notes").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let loc = loc.expect("folder creation redirects");
+    assert!(loc.starts_with("/notes/"), "got: {loc}");
+
+    // The new note should appear in the folder view.
+    let (status, body) = f.get_authed("/?folder=Project%20Notes").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("Project Notes"),
+        "folder nav should list the folder"
+    );
+    assert!(
+        body.contains("Untitled"),
+        "the new note should be in the folder"
+    );
+}
+
+#[tokio::test]
+async fn folder_filtering_shows_only_folder_notes() {
+    let f = Fixture::provisioned("folder-filter");
+    let root_id = f.create_note().await;
+    let (_, _, loc) = f.post_authed("/folders", "name=Work").await;
+    let work_loc = loc.expect("folder creation redirects");
+    let work_id = work_loc.rsplit('/').next().unwrap().to_string();
+
+    // Root view shows both.
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains(&root_id),
+        "root note should appear in All Notes"
+    );
+    assert!(
+        body.contains(&work_id),
+        "folder note should appear in All Notes"
+    );
+
+    // Folder view shows only the folder note.
+    let (status, body) = f.get_authed("/?folder=Work").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        !body.contains(&root_id),
+        "root note should not appear in folder view"
+    );
+    assert!(
+        body.contains(&work_id),
+        "folder note should appear in folder view"
+    );
+}
+
+#[tokio::test]
+async fn new_note_in_folder_creates_with_prefix() {
+    let f = Fixture::provisioned("folder-new-note");
+    let (status, _, loc) = f.post_authed("/notes", "folder=Personal").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let loc = loc.expect("create redirects");
+    let id = loc.rsplit('/').next().unwrap().to_string();
+
+    // The file on disk should have the [Personal] prefix.
+    let dir = shared_notes_dir();
+    let entries: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    let found = entries
+        .iter()
+        .any(|name| name.starts_with("[Personal]") && name.contains(&id));
+    assert!(
+        found,
+        "expected a [Personal]-prefixed file for {id}, got: {entries:?}"
+    );
+}
+
+#[tokio::test]
+async fn folder_route_requires_authentication() {
+    let f = Fixture::provisioned("folder-gate");
+    let (status, _, _) = f.post_form("/folders", "name=Secret").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    // No note should have been created.
+    let (status, body) = f.get("/").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(!body.contains("Secret"));
+}
+
+#[tokio::test]
+async fn invalid_folder_name_is_rejected() {
+    use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+
+    let f = Fixture::provisioned("folder-invalid");
+    for name in [
+        "",
+        "   ",
+        "has]bracket",
+        "has/slash",
+        "has\\backslash",
+        "..",
+        ".hidden",
+        "foo;bar",
+        "foo|bar",
+        "foo&bar",
+        "foo$bar",
+        "foo`bar",
+        "foo(bar)",
+        "foo<bar>",
+    ] {
+        let encoded = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
+        let body = format!("name={encoded}");
+        let (status, _, loc) = f.post_authed("/folders", &body).await;
+        // Should redirect back to / with an error, not to a new note.
+        assert_eq!(
+            status,
+            StatusCode::SEE_OTHER,
+            "folder name {name:?} should redirect back"
+        );
+        let loc = loc.expect("should have a Location header");
+        assert!(
+            loc.starts_with("/?error="),
+            "expected redirect to /?error=..., got: {loc}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn folder_creation_error_shows_flash_message() {
+    let f = Fixture::provisioned("folder-flash");
+    let (_, _, loc) = f.post_authed("/folders", "name=has%2Fslash").await;
+    let loc = loc.expect("should redirect");
+    assert!(loc.starts_with("/?error="), "got: {loc}");
+
+    // Follow the redirect and verify the flash message appears.
+    let (status, body) = f
+        .get_authed("/?error=folder+name+cannot+contain+%27%2F%27+or+%27%5C%27")
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("flash-message"),
+        "page should contain the flash-message element"
+    );
+    assert!(
+        body.contains("folder name cannot contain"),
+        "flash message should show the validation error"
+    );
+}
+
+#[tokio::test]
+async fn sidebar_shows_folder_navigation() {
+    let f = Fixture::provisioned("folder-nav");
+    f.post_authed("/folders", "name=Alpha").await;
+    f.post_authed("/folders", "name=Beta").await;
+
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("All Notes"), "should show All Notes");
+    assert!(body.contains("Alpha"), "should show Alpha folder");
+    assert!(body.contains("Beta"), "should show Beta folder");
+    assert!(body.contains("nav-count"), "should show note counts");
+}
+
+#[tokio::test]
+async fn note_in_folder_shows_folder_in_editor() {
+    let f = Fixture::provisioned("folder-editor");
+    let (_, _, loc) = f.post_authed("/folders", "name=Projects").await;
+    let loc = loc.expect("folder creation redirects");
+    let id = loc.rsplit('/').next().unwrap().to_string();
+
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("Projects"),
+        "editor should show the note's folder"
+    );
+    assert!(
+        body.contains("note-folder"),
+        "should use the note-folder class"
+    );
+}
+
+#[tokio::test]
+async fn folder_creation_with_special_characters() {
+    let f = Fixture::provisioned("folder-special");
+    // Spaces and unicode are fine.
+    let (status, _, loc) = f
+        .post_authed("/folders", "name=My+%E2%9C%93+Projects")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let loc = loc.expect("folder creation redirects");
+    assert!(loc.starts_with("/notes/"));
+}
+
 // ------------------------------------------------------------------ auth ----
 
 /// There is deliberately no `/setup` route. Enrolment happens in the
