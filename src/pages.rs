@@ -78,7 +78,7 @@ pub fn render_app(
                 script defer src=(base.url("/static/alpine.min.js")) {}
             }
             body x-data="app()" x-on:keydown="handleKeydown($event)" {
-                (render_menu_bar(base, current_note))
+                (render_menu_bar(base, current_note, folder_ctx.folders))
                 (render_toolbar(
                     current_note,
                     query,
@@ -100,7 +100,7 @@ pub fn render_app(
                         default_tab,
                         base,
                     ))
-                    (render_editor(current_note, default_tab, base))
+                    (render_editor(current_note, folder_ctx.folders, default_tab, base))
                     (render_preview(&rendered_preview, default_tab))
                 }
                 (render_status_bar(notes.len(), theme_name))
@@ -153,7 +153,7 @@ fn render_tab_bar(default_tab: &str) -> Markup {
     }
 }
 
-fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>) -> Markup {
+fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[String]) -> Markup {
     html! {
         nav class="menu-bar" {
             ul class="menu-list" {
@@ -200,6 +200,55 @@ fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>) -> Markup {
                             } @else {
                                 button type="button" class="menu-submenu-trigger" disabled
                                     aria-disabled="true" { "Export Note As…" }
+                            }
+                        }
+                        // Available at every width, including mobile. The
+                        // editor pane's `.move-folder-bar` is the other mobile
+                        // entry point and is `display: none` above 600px; both
+                        // post to the same route.
+                        li class="menu-submenu" {
+                            @if let Some(note) = current_note {
+                                button type="button" class="menu-submenu-trigger"
+                                    x-on:click="toggleSubmenu('noteMove', $event)"
+                                    x-bind:aria-expanded="openSubmenu === 'noteMove'" {
+                                    "Move to Folder…"
+                                    span class="submenu-chevron" aria-hidden="true" { "›" }
+                                }
+                                ul class="menu-submenu-list"
+                                    x-bind:class="{ 'open': openSubmenu === 'noteMove' }" {
+                                    // One plain form per destination, so a
+                                    // click is a real POST to /notes/:id/move
+                                    // and no JavaScript runs the move. Matches
+                                    // how the Theme menu works.
+                                    li {
+                                        form
+                                            action=(base.url(&format!("/notes/{}/move", note.id)))
+                                            method="post" {
+                                            input type="hidden" name="folder" value="";
+                                            button type="submit" { "(Unfiled)" }
+                                        }
+                                    }
+                                    @for folder in folders {
+                                        li {
+                                            form
+                                                action=(base.url(&format!(
+                                                    "/notes/{}/move",
+                                                    note.id
+                                                )))
+                                                method="post" {
+                                                input type="hidden" name="folder" value=(folder);
+                                                // `title` because folder names run to 100
+                                                // characters and the flyout is capped
+                                                // to the viewport width, so a long name
+                                                // can wrap to several lines.
+                                                button type="submit" title=(folder) { (folder) }
+                                            }
+                                        }
+                                    }
+                                }
+                            } @else {
+                                button type="button" class="menu-submenu-trigger" disabled
+                                    aria-disabled="true" { "Move to Folder…" }
                             }
                         }
                     }
@@ -327,6 +376,24 @@ fn render_toolbar(
     }
 }
 
+/// Whether a folder nav item should carry a count badge.
+///
+/// `this_folder` is `None` for the "All Notes" item, which is itself scoped to
+/// the root rather than to any one folder.
+///
+/// Badges are a whole-sidebar summary, which is only meaningful in the All
+/// Notes view where every folder is visible at once. Inside a folder the
+/// sidebar lists just that folder's notes, so a count beside any *other*
+/// folder would be zero — and zero is worse than absent, because it reads as
+/// "this folder is empty" rather than "you are not looking at it". So a folder
+/// view shows exactly one badge, on the folder you are in.
+fn show_nav_count(active_folder: Option<&str>, this_folder: Option<&str>) -> bool {
+    match active_folder {
+        None => true,
+        Some(active) => Some(active) == this_folder,
+    }
+}
+
 fn render_sidebar(
     notes: &[Note],
     folders: &[String],
@@ -361,17 +428,26 @@ fn render_sidebar(
                 button type="submit" { "+ New Folder" }
             }
             ul class="folder-nav" {
-                li class={"nav-item" (if active_folder.is_none() { " active" } else { "" })} {
+                // An empty drop folder is the root: dropping a note on "All
+                // Notes" un-files it, which is the only way back out of a
+                // folder once every note has left it.
+                li class={"nav-item" (if active_folder.is_none() { " active" } else { "" })}
+                    data-drop-folder="" {
                     a href=(base.url("/")) {
                         span class="nav-label" { "All Notes" }
-                        span class="nav-count" { (notes.len()) }
+                        @if show_nav_count(active_folder, None) {
+                            span class="nav-count" { (notes.len()) }
+                        }
                     }
                 }
                 @for folder in folders {
-                    li class={"nav-item" (if active_folder == Some(folder.as_str()) { " active" } else { "" })} {
+                    li class={"nav-item" (if active_folder == Some(folder.as_str()) { " active" } else { "" })}
+                        data-drop-folder=(folder) {
                         a href=(folder_url(base, folder)) {
                             span class="nav-label" { (folder) }
-                            span class="nav-count" { (by_folder.get(folder).map(|v| v.len()).unwrap_or(0)) }
+                            @if show_nav_count(active_folder, Some(folder)) {
+                                span class="nav-count" { (by_folder.get(folder).map(|v| v.len()).unwrap_or(0)) }
+                            }
                         }
                     }
                 }
@@ -408,9 +484,14 @@ fn render_note_item(note: &Note, current_note: Option<&Note>, base: &Base<'_>) -
     let is_active = current_note.map(|n| n.id == note.id).unwrap_or(false);
     html! {
         li class={"note-item " (if is_active { "active" } else { "" })}
+            draggable="true"
+            data-note-id=(note.id)
             data-title=(note.title.to_lowercase())
             data-content=(note.content.to_lowercase()) {
-            a href=(base.url(&format!("/notes/{}", note.id))) {
+            // `draggable="false"` matters: anchors are natively draggable, so
+            // without this the browser starts a link drag (URL ghost, no
+            // dataTransfer payload) and no folder ever lights up.
+            a href=(base.url(&format!("/notes/{}", note.id))) draggable="false" {
                 div class="note-title" { (note.title) }
                 div class="note-meta" { (relative_time(note.updated_at)) }
                 div class="note-preview" { (note.preview(80)) }
@@ -425,7 +506,20 @@ fn folder_url(base: &Base<'_>, folder: &str) -> String {
     base.url(&format!("/?folder={encoded}"))
 }
 
-fn render_editor(current_note: Option<&Note>, default_tab: &str, base: &Base<'_>) -> Markup {
+/// DOM id for a note's move-folder select, so the `<label for=…>` can point at
+/// it rather than the select relying on `aria-label` alone.
+///
+/// Safe as an element id because it is derived from a UUID.
+fn move_select_id(note: &Note) -> String {
+    format!("move-folder-{}", note.id)
+}
+
+fn render_editor(
+    current_note: Option<&Note>,
+    folders: &[String],
+    default_tab: &str,
+    base: &Base<'_>,
+) -> Markup {
     let active = if default_tab == "write" {
         " mobile-active"
     } else {
@@ -449,9 +543,6 @@ fn render_editor(current_note: Option<&Note>, default_tab: &str, base: &Base<'_>
                         class="note-title-input"
                         placeholder="Note title"
                         value=(note.title);
-                    @if let Some(folder) = &note.folder {
-                        div class="note-folder" { "Folder: " (folder) }
-                    }
                     textarea
                         id="editor"
                         name="content"
@@ -465,6 +556,49 @@ fn render_editor(current_note: Option<&Note>, default_tab: &str, base: &Base<'_>
                             span x-show="!saving" { "Save" }
                             span x-show="saving" { "Saving..." }
                         }
+                    }
+                }
+                // A sibling of `#note-form`, never a child of it: nesting a
+                // form inside a form is invalid HTML and browsers drop the
+                // inner element outright, which would silently delete this
+                // control without any error to notice.
+                //
+                // The mobile entry point for re-filing. Do NOT add
+                // `desktop-only` here: that class means "hide at <=600px", so
+                // pairing it with the `min-width: 601px` rule in style.css
+                // that hides this bar on desktop hides it at *every* width.
+                // Desktop gets File > Move to Folder… instead. Being a plain
+                // form, this one also works with JavaScript off, which the
+                // menu cannot.
+                div class="move-folder-bar" {
+                    div class="note-folder" {
+                        @if let Some(folder) = &note.folder {
+                            "Folder: " (folder)
+                        } @else {
+                            "Unfiled"
+                        }
+                    }
+                    // No `x-on:change`. A select cannot submit a form on its
+                    // own, so an auto-submit handler would leave this control
+                    // inert without JS — and working without JS is the entire
+                    // reason the bar exists alongside the menu. Select picks
+                    // the folder, the button commits it, one path either way.
+                    form
+                        class="move-folder-form"
+                        action=(base.url(&format!("/notes/{}/move", note.id)))
+                        method="post" {
+                        label class="move-label" for=(move_select_id(note)) { "Move to" }
+                        select id=(move_select_id(note)) name="folder" {
+                            option value="" selected[(note.folder.is_none())] { "Unfiled" }
+                            @for folder in folders {
+                                option
+                                    value=(folder)
+                                    selected[(note.folder.as_deref() == Some(folder.as_str()))] {
+                                    (folder)
+                                }
+                            }
+                        }
+                        button type="submit" class="btn" { "Move" }
                     }
                 }
             } @else {
@@ -646,7 +780,10 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                 style { (PreEscaped(include_str!("../static/style.css"))) }
             }
             body class="about-page" {
-                (render_menu_bar(base, None))
+                // The About page has no notes pane and no selected note, so
+                // there is nothing to move; an empty folder list renders the
+                // submenu trigger disabled.
+                (render_menu_bar(base, None, &[]))
                 main {
                     h1 { "EternaLibre Notes" }
                     p class="tagline" { "Free notes, forever." }
@@ -738,5 +875,54 @@ pub fn relative_time(dt: DateTime<Utc>) -> String {
         format!("{}d ago", diff.num_days())
     } else {
         dt.format("%b %d, %Y").to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::show_nav_count;
+
+    #[test]
+    fn all_notes_view_badges_every_item() {
+        // No folder selected: the sidebar shows every folder at once, so the
+        // counts are a real summary.
+        assert!(show_nav_count(None, None), "All Notes");
+        assert!(show_nav_count(None, Some("Work")), "a folder");
+        assert!(
+            show_nav_count(None, Some("Anything else")),
+            "another folder"
+        );
+    }
+
+    #[test]
+    fn folder_view_badges_only_the_selected_folder() {
+        assert!(
+            show_nav_count(Some("Work"), Some("Work")),
+            "the open folder"
+        );
+        assert!(
+            !show_nav_count(Some("Work"), Some("Home")),
+            "a sibling folder"
+        );
+        assert!(
+            !show_nav_count(Some("Work"), None),
+            "All Notes: the badge there would be this folder's count under a \
+             different label"
+        );
+    }
+
+    /// Guards the direction of the comparison. Matching on "is this folder the
+    /// active one" the wrong way round — inverting it by accident, or by
+    /// comparing against the wrong argument — would badge every folder
+    /// *except* the open one, which looks like a working feature until you
+    /// notice the open folder is the one missing its count.
+    #[test]
+    fn badge_follows_the_pointer_not_the_argument_order() {
+        // Two different folders: exactly one may be badged, and it must be the
+        // active one.
+        let active = "Work";
+        let other = "Home";
+        assert!(show_nav_count(Some(active), Some(active)));
+        assert!(!show_nav_count(Some(active), Some(other)));
     }
 }

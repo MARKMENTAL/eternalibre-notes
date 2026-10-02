@@ -249,6 +249,53 @@ pub fn update_note(id: &str, title: impl Into<String>, content: impl Into<String
     Ok(note)
 }
 
+/// Moves a note into a virtual folder, or back to the root when `folder` is `None`.
+///
+/// Implemented as a rename rather than a re-save, and that distinction is the
+/// whole point of this function. `save_note` derives the filename from
+/// `note.folder` but never removes the file it replaced, so writing the note
+/// under a new prefix would leave the original in place. `list_notes` would
+/// then return the same id twice and the note would render twice in the
+/// sidebar, with the sidebar sort silently ordering the two copies by
+/// whatever `updated_at` each file happened to carry.
+pub fn move_note(id: &str, folder: Option<&str>) -> Result<Note> {
+    let path = find_note_path(id)?;
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let (current_folder, note_id) = parse_stem(stem);
+
+    // A blank name means "no folder", which is how the sidebar's All Notes
+    // item and the move form's Unfiled option express the root. Route-level
+    // callers reject a blank-but-nonempty field before reaching this, so this
+    // is the defensive reading of the same input, not a second opinion.
+    let target = match folder {
+        Some(f) if !f.trim().is_empty() => Some(validate_folder_name(f)?),
+        _ => None,
+    };
+
+    // Dropping a note back where it already lives is a no-op rather than a
+    // rename onto itself. Nothing is lost by short-circuiting, and it keeps
+    // the operation idempotent: dragging the same note onto the same folder
+    // twice cannot fail the second time.
+    if current_folder == target {
+        return load_note(id);
+    }
+
+    let dest = notes_dir().join(note_filename(&note_id, target.as_deref()));
+    if dest.exists() {
+        // Only reachable if two files share a parsed id, e.g. a hand-copied
+        // note. Renaming would silently clobber one of them.
+        anyhow::bail!(
+            "refusing to move note {id}: {} already exists",
+            dest.display()
+        );
+    }
+
+    fs::rename(&path, &dest)?;
+    // Re-read rather than patching the in-memory copy, so the returned note
+    // reflects what actually landed on disk.
+    load_note(&note_id)
+}
+
 /// Validates a user-supplied folder name.
 ///
 /// The name is embedded in the filename as `[Name]`, so `]` would corrupt the
@@ -341,6 +388,123 @@ mod tests {
         let loaded = load_note(&note.id).unwrap();
         assert_eq!(loaded.folder.as_deref(), Some("Project Notes"));
         assert_eq!(loaded.title, "Folder Note");
+        delete_note(&note.id).unwrap();
+    }
+
+    /// Every on-disk `.md` file whose filename parses to `id`.
+    ///
+    /// More than one is the signature of the duplicate-write bug: a "move"
+    /// that re-saves under a new prefix without removing the old file leaves
+    /// two files that both claim the same id.
+    fn files_for_id(id: &str) -> Vec<String> {
+        let Ok(entries) = fs::read_dir(notes_dir()) else {
+            return Vec::new();
+        };
+        let mut found: Vec<String> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("md"))
+            .filter(|p| {
+                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                parse_stem(stem).1 == id
+            })
+            .map(|p| {
+                p.file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        found.sort();
+        found
+    }
+
+    #[test]
+    fn move_note_renames_the_file_and_keeps_content() {
+        std::fs::create_dir_all(notes_dir()).unwrap();
+        let note = create_note("Movable", "Body stays put", None).unwrap();
+        assert_eq!(files_for_id(&note.id), vec![format!("{}.md", note.id)]);
+
+        let moved = move_note(&note.id, Some("Work")).unwrap();
+        assert_eq!(moved.folder.as_deref(), Some("Work"));
+        assert_eq!(moved.title, "Movable");
+        assert_eq!(moved.content, "Body stays put");
+        assert_eq!(moved.id, note.id);
+
+        // The file was renamed, not copied: exactly one file claims the id and
+        // it now carries the prefix.
+        assert_eq!(
+            files_for_id(&note.id),
+            vec![format!("[Work]{}.md", note.id)]
+        );
+
+        // And a fresh read agrees.
+        assert_eq!(load_note(&note.id).unwrap().folder.as_deref(), Some("Work"));
+        delete_note(&note.id).unwrap();
+    }
+
+    #[test]
+    fn move_note_to_root_strips_the_prefix() {
+        std::fs::create_dir_all(notes_dir()).unwrap();
+        let note = create_note("Filed", "b", Some("Work".to_string())).unwrap();
+        let moved = move_note(&note.id, None).unwrap();
+        assert_eq!(moved.folder, None);
+        assert_eq!(files_for_id(&note.id), vec![format!("{}.md", note.id)]);
+
+        // An empty string means the same thing as None.
+        let refiled = create_note("Filed again", "b", Some("Work".to_string())).unwrap();
+        assert_eq!(move_note(&refiled.id, Some("  ")).unwrap().folder, None);
+        assert_eq!(
+            files_for_id(&refiled.id),
+            vec![format!("{}.md", refiled.id)]
+        );
+
+        delete_note(&note.id).unwrap();
+        delete_note(&refiled.id).unwrap();
+    }
+
+    #[test]
+    fn move_note_to_the_same_folder_is_a_no_op() {
+        std::fs::create_dir_all(notes_dir()).unwrap();
+        let note = create_note("Steady", "b", Some("Work".to_string())).unwrap();
+        // Dropping a note onto the folder it is already in must not fork it.
+        move_note(&note.id, Some("Work")).unwrap();
+        move_note(&note.id, Some("Work")).unwrap();
+        assert_eq!(
+            files_for_id(&note.id),
+            vec![format!("[Work]{}.md", note.id)]
+        );
+
+        // Same for an unfiled note dropped on the root.
+        let root = create_note("Rooted", "b", None).unwrap();
+        move_note(&root.id, None).unwrap();
+        assert_eq!(files_for_id(&root.id), vec![format!("{}.md", root.id)]);
+
+        delete_note(&note.id).unwrap();
+        delete_note(&root.id).unwrap();
+    }
+
+    #[test]
+    fn move_note_leaves_the_file_alone_when_the_name_is_rejected() {
+        std::fs::create_dir_all(notes_dir()).unwrap();
+        let note = create_note("Careful", "b", None).unwrap();
+        assert!(move_note(&note.id, Some("bad]name")).is_err());
+        assert!(move_note(&note.id, Some("../escape")).is_err());
+        // A rejected move must not have moved or deleted anything.
+        assert_eq!(files_for_id(&note.id), vec![format!("{}.md", note.id)]);
+        assert_eq!(load_note(&note.id).unwrap().folder, None);
+        delete_note(&note.id).unwrap();
+    }
+
+    #[test]
+    fn move_note_does_not_disturb_the_recency_sort() {
+        std::fs::create_dir_all(notes_dir()).unwrap();
+        let note = create_note("Untouched", "b", None).unwrap();
+        let before = load_note(&note.id).unwrap().updated_at;
+        let moved = move_note(&note.id, Some("Work")).unwrap();
+        // A move is not an edit. Bumping this would resurface the note at the
+        // top of the recency-sorted sidebar every time it is re-filed.
+        assert_eq!(moved.updated_at, before);
         delete_note(&note.id).unwrap();
     }
 

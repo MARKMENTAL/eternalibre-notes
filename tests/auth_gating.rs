@@ -795,6 +795,471 @@ async fn folder_creation_error_shows_flash_message() {
     );
 }
 
+// ------------------------------------------------------- moving a note ----
+
+/// Every on-disk note file whose `[Folder]uuid` stem parses to `id`.
+fn files_for_id(id: &str) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(shared_notes_dir()) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|name| {
+            let stem = name.strip_suffix(".md").unwrap_or(name);
+            let stripped = stem.strip_prefix('[').and_then(|s| s.split_once(']'));
+            let parsed = stripped.map(|(_, rest)| rest).unwrap_or(stem);
+            parsed == id
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+#[tokio::test]
+async fn move_route_renames_the_note_file() {
+    let f = Fixture::provisioned("move-rename");
+    let id = f.create_note().await;
+    f.post_authed(&format!("/notes/{id}"), "title=Movable&content=Body")
+        .await;
+
+    let (status, _, loc) = f
+        .post_authed(&format!("/notes/{id}/move"), "folder=Work")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(loc.as_deref(), Some(format!("/notes/{id}").as_str()));
+
+    // The file was renamed, not duplicated: the bare name is gone and exactly
+    // one prefixed file claims the id.
+    assert_eq!(files_for_id(&id), vec![format!("[Work]{id}.md")]);
+
+    // Content survived the move.
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Movable"), "title should survive the move");
+    assert!(body.contains("Body"), "content should survive the move");
+}
+
+#[tokio::test]
+async fn move_route_to_root_strips_the_prefix() {
+    let f = Fixture::provisioned("move-root");
+    let (_, _, loc) = f.post_authed("/folders", "name=Work").await;
+    let work_id = loc
+        .expect("redirect")
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_string();
+    assert_eq!(files_for_id(&work_id), vec![format!("[Work]{work_id}.md")]);
+
+    // An empty folder is the root, which is how "All Notes" and the move
+    // form's Unfiled option both express "no folder".
+    let (status, _, _) = f
+        .post_authed(&format!("/notes/{work_id}/move"), "folder=")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(files_for_id(&work_id), vec![format!("{work_id}.md")]);
+}
+
+/// The bug this whole feature hangs on.
+///
+/// `save_note` derives the filename from `note.folder` but never removes the
+/// file it replaced, so a "move" implemented as a re-save leaves the original
+/// behind. `list_notes` then returns the same id twice and the sidebar renders
+/// the note twice, with the two copies ordered by whatever `updated_at` each
+/// file happened to carry. This pins the rename rather than the re-save.
+#[tokio::test]
+async fn move_route_leaves_no_duplicate_file_or_listing() {
+    let f = Fixture::provisioned("move-nodup");
+    let id = f.create_note().await;
+
+    f.post_authed(&format!("/notes/{id}/move"), "folder=Work")
+        .await;
+    assert_eq!(
+        files_for_id(&id).len(),
+        1,
+        "one file on disk should claim the id, got: {:?}",
+        files_for_id(&id)
+    );
+
+    f.post_authed(&format!("/notes/{id}/move"), "folder=Home")
+        .await;
+    assert_eq!(
+        files_for_id(&id).len(),
+        1,
+        "repeated moves must not accumulate files, got: {:?}",
+        files_for_id(&id)
+    );
+
+    let (_, body) = f.get_authed("/").await;
+    assert_eq!(
+        body.matches(&format!("data-note-id=\"{id}\"")).count(),
+        1,
+        "the sidebar should list the note exactly once"
+    );
+
+    // The folder listing shows one copy, the root listing none.
+    let (_, home) = f.get_authed("/?folder=Home").await;
+    assert_eq!(home.matches(&format!("data-note-id=\"{id}\"")).count(), 1);
+    let (_, work) = f.get_authed("/?folder=Work").await;
+    assert!(
+        !work.contains(&id),
+        "the note left Work, so it must not appear there"
+    );
+}
+
+#[tokio::test]
+async fn move_route_rejects_invalid_folder_names_without_touching_the_file() {
+    let f = Fixture::provisioned("move-invalid");
+    let id = f.create_note().await;
+
+    for (name, body) in [
+        ("has]bracket", "folder=has%5Dbracket"),
+        ("has/slash", "folder=has%2Fslash"),
+        ("path traversal", "folder=..%2F..%2Fetc"),
+        ("empty after trim", "folder=%20%20"),
+    ] {
+        let (status, _, loc) = f.post_authed(&format!("/notes/{id}/move"), body).await;
+        assert_eq!(
+            status,
+            StatusCode::SEE_OTHER,
+            "{name} should redirect back with an error"
+        );
+        assert!(
+            loc.expect("redirect").starts_with("/?error="),
+            "{name} should land on /?error="
+        );
+        assert_eq!(
+            files_for_id(&id),
+            vec![format!("{id}.md")],
+            "{name} must leave the file where it was"
+        );
+    }
+}
+
+#[tokio::test]
+async fn move_route_requires_authentication() {
+    let f = Fixture::provisioned("move-gate");
+    let id = f.create_note().await;
+
+    let (status, _, loc) = f
+        .post_form(&format!("/notes/{id}/move"), "folder=Secret")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(loc.as_deref(), Some("/login"));
+
+    assert_eq!(
+        files_for_id(&id),
+        vec![format!("{id}.md")],
+        "an unauthenticated move must not reach the filesystem"
+    );
+}
+
+#[tokio::test]
+async fn move_route_redirects_through_the_base_path() {
+    let f = Fixture::with_base_path("move-base", "/forgejo")
+        .login_over_http()
+        .await;
+    let id = f.create_note().await;
+
+    let (status, _, loc) = f
+        .post_authed(&format!("/notes/{id}/move"), "folder=Work")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        loc.as_deref(),
+        Some(format!("/forgejo/notes/{id}").as_str())
+    );
+    assert_eq!(files_for_id(&id), vec![format!("[Work]{id}.md")]);
+}
+
+/// The drag affordances are server-rendered, so the hooks are assertable even
+/// though the drag itself needs JavaScript.
+#[tokio::test]
+async fn sidebar_note_items_and_folder_items_carry_drag_hooks() {
+    let f = Fixture::provisioned("drag-hooks");
+    let id = f.create_note().await;
+    f.post_authed(&format!("/notes/{id}/move"), "folder=Work")
+        .await;
+
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        body.contains(&format!("data-note-id=\"{id}\"")),
+        "note items must expose their id for the drag payload"
+    );
+    assert!(
+        body.contains("draggable=\"true\""),
+        "note items must be draggable"
+    );
+    // The anchor must opt out, or the browser starts a native link drag and
+    // the folder never lights up as a drop target.
+    assert!(
+        body.contains("draggable=\"false\""),
+        "the inner anchor must opt out of native link dragging"
+    );
+    assert!(
+        body.contains("data-drop-folder=\"Work\""),
+        "each folder nav item must name its folder"
+    );
+    assert!(
+        body.contains("data-drop-folder=\"\""),
+        "All Notes must be a drop target that means the root"
+    );
+}
+
+/// Desktop re-files through File > Move to Folder…. Each entry is its own form
+/// posting to `/notes/:id/move`, so a click is a real POST and no JavaScript
+/// performs the move.
+#[tokio::test]
+async fn the_move_menu_posts_the_move_route() {
+    let f = Fixture::provisioned("move-menu");
+    f.post_authed("/folders", "name=Alpha").await;
+    f.post_authed("/folders", "name=Beta").await;
+    let id = f.create_note().await;
+
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        body.contains("Move to Folder"),
+        "the File menu should offer a Move to Folder submenu"
+    );
+
+    // Scope to the submenu before counting. `list_folders()` reads the shared
+    // notes directory, which every test in this binary writes to, so the app's
+    // folder list legitimately holds folders created by unrelated tests. A
+    // whole-page count would therefore be asserting on global state.
+    //
+    // Anchored on the Alpine binding, not on the label text: `style.css` is
+    // inlined into the page and its comments mention the menu by name, so a
+    // text search finds the stylesheet first.
+    let trigger = body
+        .find("toggleSubmenu('noteMove'")
+        .expect("the submenu trigger");
+    let submenu_end = body[trigger..]
+        .find("</ul>")
+        .map(|i| trigger + i)
+        .expect("the submenu list should close");
+    let submenu = &body[trigger..submenu_end];
+
+    let action = format!("action=\"/notes/{id}/move\"");
+
+    // One destination per folder in the sidebar, plus (Unfiled). Counted from
+    // the sidebar rather than hardcoded, because the shared notes directory
+    // means other tests' folders are legitimately present. The invariant worth
+    // pinning is that the menu and the sidebar agree on which folders exist.
+    let nav = folder_nav_region(&body);
+    let nav_items = nav.matches("data-drop-folder=\"").count();
+    assert_eq!(
+        submenu.matches(&action).count(),
+        nav_items,
+        "the submenu should offer (Unfiled) plus one entry per sidebar \
+         folder ({nav_items} destinations), got:\n{submenu}"
+    );
+
+    // The two folders this test created must both be offered.
+    assert!(
+        submenu.contains("value=\"Alpha\""),
+        "Alpha should be listed"
+    );
+    assert!(submenu.contains("value=\"Beta\""), "Beta should be listed");
+
+    // Folder names run to 100 characters and the flyout is capped to the
+    // viewport, so a long name wraps across lines. The untruncated name stays
+    // reachable via the title attribute.
+    assert!(
+        submenu.contains("title=\"Alpha\""),
+        "each folder button should carry its full name as a title"
+    );
+
+    // Un-filing comes first, matching the sidebar's own ordering.
+    let unfiled = submenu
+        .find("value=\"\"")
+        .expect("the submenu should offer (Unfiled)");
+    let alpha = submenu.find("value=\"Alpha\"").expect("Alpha");
+    assert!(unfiled < alpha, "(Unfiled) should be listed first");
+
+    // (Unfiled) posts an empty folder, which the route reads as the root.
+    assert!(
+        body.contains("<input type=\"hidden\" name=\"folder\" value=\"\">"),
+        "the submenu should offer a way to un-file a note"
+    );
+    assert!(
+        body.contains("<input type=\"hidden\" name=\"folder\" value=\"Alpha\">"),
+        "each folder should post its own name"
+    );
+
+    // Disabled with no note open, matching Export Note As….
+    let (status, empty) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        empty.contains("Move to Folder"),
+        "the trigger should still render without a note"
+    );
+}
+
+/// Mobile's re-filing control. It must stay in the markup at every breakpoint —
+/// CSS decides which entry point shows — and it must work without JavaScript,
+/// which is the whole reason it exists beside the menu.
+#[tokio::test]
+async fn the_move_bar_survives_for_mobile() {
+    let f = Fixture::provisioned("move-bar");
+    f.post_authed("/folders", "name=Alpha").await;
+    let id = f.create_note().await;
+
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        body.contains("class=\"move-folder-bar\""),
+        "the mobile bar should be in the markup"
+    );
+    assert!(
+        body.contains(&format!("action=\"/notes/{id}/move\"")),
+        "the bar should post to the move route"
+    );
+    assert!(
+        body.contains("name=\"folder\""),
+        "the bar needs a folder field"
+    );
+
+    // A select cannot submit a form by itself. If an auto-submit handler came
+    // back, the button would look redundant and the control would silently stop
+    // working with JS off — which is the only reason it is here.
+    //
+    // Both bounds are anchored on markup. `style.css` is inlined into the page,
+    // so a search for `move-folder-bar` finds the stylesheet first and the
+    // slice covers CSS, where both assertions pass without inspecting
+    // anything. The bar holds exactly one form, so that form's close tag is a
+    // reliable end bound covering both its attributes and its button.
+    let bar_start = body
+        .find("class=\"move-folder-bar\"")
+        .expect("the bar markup");
+    let bar_end = body[bar_start..]
+        .find("</form>")
+        .map(|i| bar_start + i + "</form>".len())
+        .expect("the bar holds one form");
+    let bar = &body[bar_start..bar_end];
+
+    assert!(
+        !bar.contains("x-on:change"),
+        "the bar must not auto-submit on change; the button is the only \
+         submit path and the control has to work without JS"
+    );
+    assert!(
+        bar.contains("<button type=\"submit\""),
+        "the bar needs its submit button"
+    );
+}
+
+/// Neither re-filing entry point may carry `desktop-only`.
+///
+/// This is a regression guard for a bug that shipped: the bar had
+/// `desktop-only` *and* a `@media (min-width: 601px) { display: none }` rule.
+/// `.desktop-only` hides at `max-width: 600px`, so the two rules composed to
+/// hide the bar at every width, leaving phones with no way to re-file a note
+/// at all — the menu was `desktop-only` too, and HTML5 drag does not fire on
+/// touch.
+///
+/// Nothing in a Rust test can observe `display: none`, which is why the earlier
+/// version of this check passed while the control was invisible. Pinning the
+/// *contract* — the class must be absent from both, with the bar hidden by a
+/// `min-width` query instead — is what actually catches the mistake.
+#[tokio::test]
+async fn move_entry_points_are_not_desktop_only() {
+    let f = Fixture::provisioned("move-not-desktop-only");
+    f.post_authed("/folders", "name=Alpha").await;
+    let id = f.create_note().await;
+
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        !body.contains("class=\"move-folder-bar desktop-only\""),
+        "`.desktop-only` hides at max-width 600px, so adding it to the bar \
+         would hide the mobile control that only exists below that width"
+    );
+
+    let trigger = body
+        .find("toggleSubmenu('noteMove'")
+        .expect("the submenu trigger");
+    let submenu_end = body[trigger..]
+        .find("</ul>")
+        .map(|i| trigger + i)
+        .expect("the submenu list should close");
+    let submenu = &body[trigger..submenu_end];
+
+    assert!(
+        !submenu.contains("desktop-only"),
+        "the File submenu is the mobile entry point too and must stay visible \
+         at every width"
+    );
+}
+
+/// The move control must not be swallowed by the browser as an illegally
+/// nested form: a form inside a form is invalid and the inner element is
+/// discarded outright.
+#[tokio::test]
+async fn the_move_form_is_a_sibling_of_the_note_form() {
+    let f = Fixture::provisioned("move-form-shape");
+    let id = f.create_note().await;
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let note_form = body
+        .find("<form id=\"note-form\"")
+        .expect("the note form should be present");
+    let note_form_end = body[note_form..]
+        .find("</form>")
+        .map(|i| note_form + i)
+        .expect("the note form should be closed");
+    // Match the markup, not the bare class name: `style.css` is inlined into
+    // every page, so a plain `find("move-folder-form")` lands on the
+    // stylesheet text and passes while the real control is nested wrongly.
+    let move_form = body
+        .find("class=\"move-folder-form\"")
+        .expect("the move form should be present");
+
+    assert!(
+        move_form > note_form_end,
+        "a form nested inside #note-form is invalid HTML and browsers drop the \
+         inner element entirely, silently deleting the no-JS move control"
+    );
+
+    assert!(
+        body.contains(&format!("action=\"/notes/{id}/move\"")),
+        "the move form should post to the move route"
+    );
+    assert!(
+        body.contains("name=\"folder\""),
+        "the move form needs a folder field"
+    );
+}
+
+/// `app.js` is inlined verbatim, so a regression in it is invisible to every
+/// other test in the suite. Behind a base path an origin-absolute move URL
+/// resolves against the site root, never reaches the app, and the proxy's own
+/// 404 comes back.
+#[tokio::test]
+async fn the_move_fetch_uses_the_injected_base_path() {
+    let f = Fixture::with_base_path("move-fetch-base", "/forgejo")
+        .login_over_http()
+        .await;
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        body.contains("fetch(base + '/notes/'"),
+        "app.js should build the move URL from __BASE_PATH__"
+    );
+    assert!(
+        !body.contains("fetch('/notes/'"),
+        "app.js must not hardcode an origin-absolute move path"
+    );
+}
+
 #[tokio::test]
 async fn sidebar_shows_folder_navigation() {
     let f = Fixture::provisioned("folder-nav");
@@ -807,6 +1272,95 @@ async fn sidebar_shows_folder_navigation() {
     assert!(body.contains("Alpha"), "should show Alpha folder");
     assert!(body.contains("Beta"), "should show Beta folder");
     assert!(body.contains("nav-count"), "should show note counts");
+}
+
+/// The `folder-nav` list, and nothing else.
+///
+/// Scoped deliberately: `.nav-count` also appears in the inlined stylesheet,
+/// and counting the whole body would let a badge elsewhere in the page stand in
+/// for a nav badge that is not there — which is how the test below would come
+/// to pass while showing the wrong thing.
+fn folder_nav_region(body: &str) -> &str {
+    let start = body
+        .find("<ul class=\"folder-nav\">")
+        .expect("the folder nav should be present");
+    let rest = &body[start..];
+    let end = rest.find("</ul>").expect("the folder nav should be closed");
+    &rest[..end]
+}
+
+/// Counts the badges inside one nav item's link.
+///
+/// Returns `None` when the label is not in the nav at all, so a test can tell
+/// "no badge" apart from "no such folder" instead of both reading as zero.
+fn nav_count_for(region: &str, label: &str) -> Option<usize> {
+    let anchor = region
+        .split("<a href=")
+        .find(|chunk| chunk.contains(&format!(">{label}</span>")))
+        .unwrap_or_else(|| panic!("no nav item labelled {label:?} in:\n{region}"));
+    Some(anchor.matches("nav-count").count())
+}
+
+#[tokio::test]
+async fn all_notes_view_shows_every_folder_count() {
+    let f = Fixture::provisioned("nav-count-all");
+    f.post_authed("/folders", "name=Alpha").await;
+    f.post_authed("/folders", "name=Beta").await;
+
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    let nav = folder_nav_region(&body);
+
+    // Every folder is visible at once here, so the counts are a real summary
+    // and every one of them earns its place.
+    assert_eq!(
+        nav_count_for(nav, "All Notes"),
+        Some(1),
+        "All Notes should be badged in the All Notes view"
+    );
+    assert_eq!(
+        nav_count_for(nav, "Alpha"),
+        Some(1),
+        "each folder should be badged in the All Notes view"
+    );
+    assert_eq!(nav_count_for(nav, "Beta"), Some(1));
+}
+
+#[tokio::test]
+async fn folder_view_shows_only_the_active_folder_count() {
+    let f = Fixture::provisioned("nav-count-one");
+    f.post_authed("/folders", "name=Alpha").await;
+    f.post_authed("/folders", "name=Beta").await;
+
+    let (status, body) = f.get_authed("/?folder=Alpha").await;
+    assert_eq!(status, StatusCode::OK);
+    let nav = folder_nav_region(&body);
+
+    // Exactly one badge: the folder you are in. The siblings are not merely
+    // un-highlighted, they carry nothing at all.
+    assert_eq!(
+        nav_count_for(nav, "Alpha"),
+        Some(1),
+        "the open folder should be badged"
+    );
+    assert_eq!(
+        nav_count_for(nav, "Beta"),
+        Some(0),
+        "a sibling folder should carry no badge, not a zero"
+    );
+    assert_eq!(
+        nav_count_for(nav, "All Notes"),
+        Some(0),
+        "a badge there would be this folder's count under a different label"
+    );
+
+    // Belt and braces: the whole nav holds one badge, so a badge appearing
+    // anywhere unexpected fails rather than being absorbed above.
+    assert_eq!(
+        nav.matches("nav-count").count(),
+        1,
+        "a folder view should show exactly one badge, got:\n{nav}"
+    );
 }
 
 #[tokio::test]

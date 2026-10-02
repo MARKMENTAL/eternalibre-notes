@@ -119,6 +119,7 @@ pub fn router(state: AppState) -> Router {
             "/notes/:id",
             get(show_note_route).post(update_or_delete_note_route),
         )
+        .route("/notes/:id/move", post(move_note_route))
         .route("/preview", post(preview_route))
         .route("/theme", post(theme_route))
         .route("/about", get(about_route))
@@ -451,6 +452,18 @@ struct FolderForm {
     name: String,
 }
 
+/// Redirects back to the app shell carrying a server-rendered flash message.
+///
+/// The message rides in the query string rather than in server-side session
+/// state, which is what keeps the no-JS guarantee intact: the forms that hit
+/// this are plain HTML forms, so the error has to survive an ordinary page
+/// reload to be visible at all.
+fn error_redirect(state: &AppState, message: &str) -> Redirect {
+    let encoded =
+        percent_encoding::utf8_percent_encode(message, percent_encoding::NON_ALPHANUMERIC);
+    Redirect::to(&state.url(&format!("/?error={encoded}")))
+}
+
 /// Creates a folder by creating the first note in it.
 ///
 /// Folders are virtual — they exist only when a note carries the `[Folder]`
@@ -463,22 +476,52 @@ async fn create_folder_route(
 ) -> Result<impl IntoResponse, AppError> {
     let folder = match notes::validate_folder_name(&form.name) {
         Ok(f) => f,
-        Err(e) => {
-            // Redirect back with the error in the query string so the
-            // server-rendered flash message can display it. This keeps the
-            // no-JS guarantee: the form is a plain HTML form, and the error
-            // appears after a normal page reload.
-            let error_msg = e.to_string();
-            let encoded = percent_encoding::utf8_percent_encode(
-                &error_msg,
-                percent_encoding::NON_ALPHANUMERIC,
-            );
-            let redirect_url = state.url(&format!("/?error={encoded}"));
-            return Ok(Redirect::to(&redirect_url).into_response());
-        }
+        Err(e) => return Ok(error_redirect(&state, &e.to_string()).into_response()),
     };
     let note = notes::create_note("Untitled", "", Some(folder))?;
     Ok(Redirect::to(&state.url(&format!("/notes/{}", note.id))).into_response())
+}
+
+#[derive(Deserialize)]
+struct MoveForm {
+    folder: String,
+}
+
+/// Moves a note between virtual folders, or back to the root.
+///
+/// A dedicated route rather than another `_method` arm on `POST /notes/:id`,
+/// because it is a distinct semantic action with its own error handling, and
+/// because the no-JS move form needs a clean action URL of its own.
+///
+/// Two clients hit this: the drag-and-drop handler in `app.js`, which `fetch`es
+/// it and reloads rather than following the redirect, and the plain move form
+/// in the editor pane, which follows it. An empty `folder` means the root.
+async fn move_note_route(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Form(form): Form<MoveForm>,
+) -> Result<impl IntoResponse, AppError> {
+    // Only a literally empty field means the root — that is the Unfiled
+    // option and the All Notes drop target. A field that is non-empty but
+    // trims to nothing is a mistake, and is rejected here rather than being
+    // quietly treated as "un-file", so it cannot silently destroy a note's
+    // placement. This also matches `create_folder_route`, where a blank name
+    // is a validation error.
+    let target = if form.folder.is_empty() {
+        None
+    } else {
+        match notes::validate_folder_name(&form.folder) {
+            Ok(f) => Some(f),
+            Err(e) => return Ok(error_redirect(&state, &e.to_string()).into_response()),
+        }
+    };
+
+    notes::move_note(&id, target.as_deref())?;
+
+    // Back to the note rather than the folder listing: the note just moved, so
+    // the sidebar follows it to its new folder and the user keeps their place
+    // in the document.
+    Ok(Redirect::to(&state.url(&format!("/notes/{id}"))).into_response())
 }
 
 async fn update_or_delete_note_route(

@@ -180,8 +180,13 @@ button, input, select, textarea {
   left: calc(100% - 2px);
   z-index: 101;
   min-width: 180px;
+  /* This flyout holds user-supplied folder names (up to 100 characters) and
+     `body` has `overflow: hidden`, so without a cap a long name widens the
+     list past the viewport and that destination becomes unreachable. */
+  max-width: calc(100vw - 24px);
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
+  overflow-wrap: anywhere;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   background-color: var(--app-bg);
@@ -346,6 +351,18 @@ button, input, select, textarea {
   .app-body.hide-preview .preview-pane {
     display: none;
   }
+
+  /* Desktop's entry point for re-filing a note is File > Move to Folder…;
+     the bar is the mobile one. Paired with the `max-width: 600px` rules for
+     the mobile flyout below — keep the two breakpoints in sync.
+
+     Note the bar must NOT also carry `.desktop-only` in the markup. That
+     class hides things at `max-width: 600px`, so the two rules together would
+     hide it at every width and mobile would lose re-filing entirely.
+     `move_entry_points_are_not_desktop_only` pins this. */
+  .move-folder-bar {
+    display: none;
+  }
 }
 
 /* Sidebar */
@@ -380,6 +397,14 @@ button, input, select, textarea {
 .note-item {
   border-radius: 8px;
   transition: background-color 0.15s ease;
+  /* Suppress iOS Safari's long-press callout (Copy / Look Up / Translate).
+     On a touch screen the re-file gesture IS a long press, and that menu
+     competes with it for the same gesture. `user-select` is deliberately left
+     alone: preview text stays selectable and copyable.
+
+     Not `touch-action: none`, which is the usual advice for drag — on a
+     scrollable sidebar it would break scrolling the note list. */
+  -webkit-touch-callout: none;
 }
 
 .note-item:hover {
@@ -472,6 +497,14 @@ button, input, select, textarea {
 }
 
 /* Folder Navigation */
+/* Sticky so the folders stay visible, and droppable, however long the note
+   list grows — `.sidebar` is the scroll container and the nav sits above the
+   list inside it. Nothing auto-scrolls a nested overflow container mid-drag,
+   so without this the drag targets simply scroll out of reach.
+
+   Needs its own background because it now overlays the scrolling note items.
+   The z-index is scoped to the sidebar and safe under the stacking-context
+   rule in AGENTS.md §7: no menu dropdowns live in here to trap. */
 .folder-nav {
   list-style: none;
   margin: 0;
@@ -480,6 +513,14 @@ button, input, select, textarea {
   flex-direction: column;
   gap: 2px;
   border-bottom: 1px solid var(--ui-border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--app-bg);
+  /* `.sidebar` is a flex column, so without this the nav can be squeezed by
+     a long note list — and a squeezed sticky bar clips its own folder names,
+     which are the drop target labels. */
+  flex-shrink: 0;
 }
 
 .nav-item a {
@@ -526,11 +567,94 @@ button, input, select, textarea {
 }
 
 /* Note Folder Display */
+/* Sits inside .move-folder-bar, which owns the border. */
 .note-folder {
-  padding: 8px 16px;
   font-size: 12px;
   opacity: 0.6;
-  border-bottom: 1px solid var(--ui-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Move-to-folder control. A sibling of #note-form rather than a child: a form
+   inside a form is invalid and browsers discard the inner one. */
+.move-folder-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--ui-border);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.move-folder-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.move-folder-form select {
+  max-width: 160px;
+  padding: 6px 10px;
+  background-color: var(--app-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  color: var(--app-fg);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.move-folder-form select:focus {
+  border-color: var(--ansi-4);
+}
+
+.move-label {
+  font-size: 12px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+/* Drag-and-drop re-filing: the drag source is the sidebar note item, the drop
+   targets are the folder nav items.
+
+   No `opacity` here, deliberately. Any opacity below 1 promotes the row to its
+   own compositing layer, and when iOS rasterizes that layer to build the drag
+   image the backdrop is not composited in, so a transparent-background row
+   comes out solid black. That reported as the whole row turning black while
+   held for a long press, and it was far more obvious against light themes —
+   the artifact is a fixed dark region whose visibility merely tracks contrast
+   with the sidebar behind it.
+
+   The background must be *opaque*, and this is the part that took two rounds
+   to get right. `--ui-hover` is `{fg}1a` — about 10% alpha — so it looks like
+   a subtle tint when the browser composites it over the sidebar, but iOS
+   captures the row with that transparency and paints the see-through area
+   black. `.note-item.active` uses `--ui-hover` and is fine only because it
+   is never dragged. So the dragging state uses `--app-bg` directly: the same
+   colour the sidebar already paints, which reads as "this row is lifted out
+   of the list" and gives the drag image an opaque backdrop to rasterize.
+
+   `transition: none` because `.note-item` transitions `background-color` over
+   150ms: an animating background can transiently promote a layer, so a drag
+   image captured mid-transition would go black all over again. It also makes
+   the pickup instant, which suits a drag cue better than a fade-in.
+
+   Same `--ansi-4` as the drop targets, so source and target read as one
+   system. Inset rather than outline, since outline draws outside the border
+   box and would collide with the sidebar's own borders. */
+.note-item.dragging {
+  background-color: var(--app-bg);
+  box-shadow: inset 0 0 0 1px var(--ansi-4);
+  transition: none;
+}
+
+.nav-item.drop-target > a {
+  background-color: var(--ui-hover);
+  outline: 1px dashed var(--ansi-4);
+  outline-offset: -1px;
 }
 
 /* Editor Pane */
@@ -543,10 +667,18 @@ button, input, select, textarea {
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
+/* `flex: 1` + `min-height: 0` rather than `height: 100%`, because the pane
+   also holds `.move-folder-bar`. A percentage height on a flex item would
+   resolve against the pane's full height and push the bar off-screen; these
+   let the form take the leftover space and keep the textarea's own `flex: 1`
+   growth meaningful. `min-height: 0` is what stops the textarea's intrinsic
+   height from refusing to shrink below its content. The bar is
+   `display: none` above 600px, so this only matters on mobile. */
 .note-form {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .note-title-input {
@@ -1157,6 +1289,42 @@ button, input, select, textarea {
   .new-folder-form button {
     min-height: 44px;
     font-size: 16px; /* prevents iOS zoom-on-focus */
+  }
+
+  /* Drag-and-drop never fires on a touch screen, so the move control in the
+     editor pane is the only way to re-file a note on a phone. It therefore
+     has to clear the same 44px target the rest of the mobile UI enforces. */
+  .move-folder-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .move-folder-form {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Open the flyout downward rather than to the right. Beside the trigger
+     there is no room on a phone: the File dropdown already sits near the left
+     edge and `body` has `overflow: hidden`, so a rightward flyout runs off
+     screen. This is positioning on the dropdown itself, which is safe under
+     the stacking-context rule in AGENTS.md §7 — the rule is about ancestors. */
+  .menu-submenu-list {
+    left: 0;
+    top: 100%;
+    max-width: calc(100vw - 24px);
+  }
+
+  .move-folder-form select {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS zoom-on-focus */
+  }
+
+  .move-folder-form button {
+    min-height: 44px;
   }
 
   .folder-nav {

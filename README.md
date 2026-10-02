@@ -14,14 +14,24 @@ binds to all interfaces by default, so you can reach your notes from a phone or
 another machine on your network, protected by a TOTP code from your
 authenticator app. No telemetry, no accounts, no third-party services.
 
+## What's new in 0.2
+
+- **Virtual folders** — organize notes into folders without creating real directories. A folder is encoded as a `[Folder]uuid.md` filename prefix, so a single notes directory can hold many of them
+- **Move notes between folders** — drag a note onto a folder in the sidebar, use `File → Move to Folder…`, or use the Move control in the editor on a phone
+- **Re-filing is a rename** — `[Work]uuid.md` becomes `[Home]uuid.md`. The note's id never changes, so links to it keep working, and its modified time is not bumped
+- **Long-press drag on touch** — the re-file gesture on a phone
+- **Quieter folder counts** — badges show across every folder in the All Notes view, and only on the folder you are inside otherwise
+- **Pinned folder list** — folders stay visible and droppable however long the note list grows
+
 ## Features
 
 - **TOTP-locked by default** — authenticator app required on first launch and after every restart
 - **Server-side rendered** with Axum and Maud — fast, type-safe HTML templates
-- **Works without JavaScript** — note editing, search, theming, and the login form are plain HTML; the menus, mobile tabs, and live preview are the JS-dependent parts
+- **Works without JavaScript** — note editing, search, and the login form are plain HTML; the menus, mobile tabs, live preview, and drag-and-drop re-filing are the JS-dependent parts
 - **Alpine.js enhancements** — live Markdown preview, instant search, keyboard shortcuts
 - **File-based storage** — notes are persisted as Markdown files in `notes/`
 - **Virtual folders** — organize notes into folders without real directories; folders are encoded as `[Folder]uuid.md` filename prefixes
+- **Move notes between folders** — drag a note onto a folder, use `File → Move to Folder…`, or the Move control in the editor on a phone
 - **Per-note exports** — download Markdown or self-contained themed HTML, or print/save the themed note as PDF
 - **40 built-in themes** — including KDE Breeze, Blueberry Professional, classic desktop homages, distro-inspired palettes, warm neutrals, and more
 - **Markdown extras** — tables, tasklists, strikethrough, and footnotes via `pulldown-cmark`
@@ -45,7 +55,7 @@ Then open http://127.0.0.1:3000 (or your chosen address).
 
 Notes are stored in the `notes/` directory as `.md` files with YAML frontmatter.
 
-## Folders
+## Virtual Folders
 
 Notes can be organized into virtual folders without creating real directories on disk. A folder is encoded as a filename prefix:
 
@@ -55,9 +65,13 @@ Notes can be organized into virtual folders without creating real directories on
 
 Root notes (no folder) keep the plain `uuid.md` format. Folders exist only when they contain at least one note — there is no separate folder metadata to manage.
 
-**Creating a folder:** click `+ New Folder` in the sidebar (or File → New Folder in the menu), type a name, and the app creates a new note in that folder and opens it.
+**Creating a folder:** click `+ New Folder` in the sidebar, type a name, and the app creates a new note in that folder and opens it.
 
 **Filtering:** click a folder name in the sidebar to see only that folder's notes. Click **All Notes** to see everything grouped by folder. When a folder is active, the **+ New Note** button creates notes in that folder.
+
+**Moving a note between folders:** drag it from the sidebar onto a folder, pick `File → Move to Folder…`, or use the Move control under the editor on a phone. Dropping a note on **All Notes** — or choosing **Unfiled** — takes it back out of its folder.
+
+A move renames the file: `[Work]uuid.md` becomes `[Home]uuid.md`. The note's id is left untouched, so links to it keep working, and its modified time is not bumped, since re-filing is not an edit.
 
 **Validation:** folder names reject path traversal (`..`), shell metacharacters (`;`, `|`, `&`, `$`, backtick, parens, angle brackets), control characters, leading dots, and names over 100 characters. Invalid names show a red flash message at the top of the page.
 
@@ -103,7 +117,7 @@ Options:
       --host <HOST>            Host address to bind to [default: 0.0.0.0]
   -p, --port <PORT>            Port to listen on [default: 3000]
       --notes-dir <NOTES_DIR>  Directory holding note files [default: notes]
-      --base-path <BASE_PATH>  Path prefix when behind a reverse proxy subdirectory
+      --base-path <BASE_PATH>  Path prefix when behind a reverse proxy subdirectory. Example: --base-path /forgejo when the app answers at https://host/forgejo/. Leave empty when mounted at the site root [default: ""]
   -h, --help                   Print help
 ```
 
@@ -135,8 +149,8 @@ cargo fmt
 | `src/syntax.rs` | syntect integration and per-theme syntax color scheme generation |
 | `src/themes.rs` | 40 predefined themes and CSS variable engine |
 | `static/style.css` | Full application stylesheet |
-| `static/app.js` | Alpine.js component: preview, search, menus, tabs |
-| `tests/auth_gating.rs` | End-to-end tests for the TOTP auth gate |
+| `static/app.js` | Alpine.js component: preview, search, menus, tabs, drag-and-drop re-filing |
+| `tests/auth_gating.rs` | End-to-end tests: auth gate, folders, note moves, nav counts, base paths, about page |
 
 ## License
 
