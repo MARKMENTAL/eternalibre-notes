@@ -34,6 +34,13 @@ function app() {
       };
       document.addEventListener('click', this._onDocClick);
 
+      // Restore the persisted folder-nav preference. If the nav was hidden
+      // last time, refresh the sidebar to All Notes so the state is consistent.
+      this.folderNavCollapsed = this._loadFolderNavPreference();
+      if (this.folderNavCollapsed) {
+        this.refreshSidebarToAllNotes();
+      }
+
       this.initNoteDragging();
     },
 
@@ -263,6 +270,82 @@ function app() {
 
     toggleFolderNav() {
       this.folderNavCollapsed = !this.folderNavCollapsed;
+      this._saveFolderNavPreference(this.folderNavCollapsed);
+      if (this.folderNavCollapsed) {
+        this.refreshSidebarToAllNotes();
+      }
+    },
+
+    /// localStorage key for the folder-nav preference, scoped by base path
+    /// so separate app installs on one host do not share the setting.
+    _folderNavStorageKey() {
+      const base = window.__BASE_PATH__ || '';
+      return 'eternalibre:folderNavCollapsed:' + base;
+    },
+
+    _loadFolderNavPreference() {
+      try {
+        return localStorage.getItem(this._folderNavStorageKey()) === 'true';
+      } catch (e) {
+        return false;
+      }
+    },
+
+    _saveFolderNavPreference(collapsed) {
+      try {
+        localStorage.setItem(this._folderNavStorageKey(), collapsed ? 'true' : 'false');
+      } catch (e) {
+        // Storage unavailable (private mode, quota, etc.) — the toggle still
+        // works for this session, it just won't persist.
+      }
+    },
+
+    /// Refresh the sidebar to the All Notes view without navigating away.
+    ///
+    /// Fetches the server-rendered index page and swaps in the folder nav,
+    /// note list, toolbar folder field, and status count. The editor pane and
+    /// note form are untouched, so unsaved edits survive.
+    refreshSidebarToAllNotes() {
+      const base = window.__BASE_PATH__ || '';
+      const searchInput = document.querySelector('.search-form input[name="q"]');
+      const query = searchInput ? searchInput.value.trim() : '';
+      const url = base + '/' + (query ? '?q=' + encodeURIComponent(query) : '');
+
+      fetch(url)
+        .then(r => r.text())
+        .then(html => {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          if (!doc.querySelector('.sidebar')) return; // not the app page
+
+          // Swap the folder nav list
+          const newNav = doc.querySelector('#folder-nav-list');
+          const oldNav = document.querySelector('#folder-nav-list');
+          if (newNav && oldNav) {
+            oldNav.innerHTML = newNav.innerHTML;
+          }
+
+          // Swap the note list
+          const newList = doc.querySelector('.note-list');
+          const oldList = document.querySelector('.note-list');
+          if (newList && oldList) {
+            oldList.innerHTML = newList.innerHTML;
+          }
+
+          // Update the toolbar's hidden folder field
+          const newFolderInput = doc.querySelector('.toolbar input[name="folder"]');
+          const oldFolderInput = document.querySelector('.toolbar input[name="folder"]');
+          if (newFolderInput && oldFolderInput) {
+            oldFolderInput.value = newFolderInput.value;
+          }
+
+          // Update the status bar note count
+          const newCount = doc.querySelector('.status-bar span');
+          const oldCount = document.querySelector('.status-bar span');
+          if (newCount && oldCount) {
+            oldCount.textContent = newCount.textContent;
+          }
+        })
+        .catch(err => console.error('Sidebar refresh failed:', err));
     },
 
     focusEditor() {

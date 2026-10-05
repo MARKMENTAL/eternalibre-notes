@@ -357,7 +357,13 @@ fn render_toolbar(
                     button type="submit" class="btn btn-primary" { "+ New Note" }
                 }
                 @if let Some(note) = current_note {
-                    form action=(base.url(&format!("/notes/{}", note.id))) method="post" {
+                    form
+                        action=(base.url(&format!("/notes/{}", note.id)))
+                        method="post"
+                        data-delete-label=(format!("[{}-{}]",
+                            note.folder.as_deref().unwrap_or("Unfiled"),
+                            note.title))
+                        onsubmit="return confirm('Are you sure you want to delete ' + this.dataset.deleteLabel + '? This cannot be undone.')" {
                         input type="hidden" name="_method" value="delete";
                         button type="submit" class="btn btn-danger" { "Delete" }
                     }

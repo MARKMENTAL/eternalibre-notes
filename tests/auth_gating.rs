@@ -643,6 +643,50 @@ async fn deleting_a_note_requires_authentication() {
     assert_eq!(status, StatusCode::OK);
 }
 
+/// The delete form asks for confirmation before submitting, using the note's
+/// folder and title in the prompt label.
+#[tokio::test]
+async fn delete_form_has_confirmation_prompt() {
+    let f = Fixture::provisioned("delete-confirm");
+    let (_, _, loc) = f.post_authed("/folders", "name=Projects").await;
+    let loc = loc.expect("folder creation redirects");
+    let id = loc.rsplit('/').next().unwrap().to_string();
+
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Find the delete form by its note-specific action
+    let form_start = body
+        .find(&format!("/notes/{id}\""))
+        .expect("delete form should exist");
+    let form_end = body[form_start..]
+        .find("</form>")
+        .map(|i| form_start + i + "</form>".len())
+        .expect("delete form should close");
+    let form = &body[form_start..form_end];
+
+    assert!(
+        form.contains("onsubmit"),
+        "delete form should have an onsubmit handler"
+    );
+    assert!(
+        form.contains("confirm("),
+        "delete form should show a confirmation prompt"
+    );
+    assert!(
+        form.contains("data-delete-label"),
+        "delete form should carry the folder-title label"
+    );
+    assert!(
+        form.contains("[Projects-"),
+        "label should include the folder name"
+    );
+    assert!(
+        form.contains("_method") && form.contains("delete"),
+        "form should still submit the delete method"
+    );
+}
+
 // ---------------------------------------------------------------- folders ----
 
 #[tokio::test]
@@ -2139,6 +2183,86 @@ async fn alpine_is_available_without_a_static_directory() {
     );
 
     let _ = std::fs::remove_file(&secret_file);
+}
+
+/// The folder-nav collapsed preference is persisted in localStorage, scoped
+/// by base path so separate installs on one host do not share the setting.
+#[tokio::test]
+async fn folder_nav_preference_is_persisted() {
+    let f = Fixture::provisioned("folder-nav-persist");
+
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The app.js source must contain the localStorage key and the load/save
+    // calls. Anchor on the storage key pattern and the preference read/write.
+    assert!(
+        body.contains("eternalibre:folderNavCollapsed:"),
+        "localStorage key should be scoped by base path"
+    );
+    assert!(
+        body.contains("localStorage.getItem"),
+        "should load the persisted preference"
+    );
+    assert!(
+        body.contains("localStorage.setItem"),
+        "should save the persisted preference"
+    );
+}
+
+/// When the folder nav is hidden, the sidebar refreshes to All Notes without
+/// navigating away. The editor and its unsaved contents must survive.
+#[tokio::test]
+async fn hiding_folder_nav_refreshes_sidebar_to_all_notes() {
+    let f = Fixture::provisioned("folder-nav-refresh");
+    f.post_authed("/folders", "name=Alpha").await;
+    let id = f.create_note().await;
+
+    // Open the note in its folder
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The app.js source must call refreshSidebarToAllNotes when hiding
+    assert!(
+        body.contains("refreshSidebarToAllNotes"),
+        "hiding the nav should refresh the sidebar"
+    );
+
+    // The refresh must fetch the index page and swap sidebar elements
+    assert!(body.contains("DOMParser"), "should parse the fetched page");
+    assert!(
+        body.contains("#folder-nav-list"),
+        "should swap the folder nav list"
+    );
+    assert!(body.contains(".note-list"), "should swap the note list");
+
+    // The editor form must NOT be replaced — unsaved edits survive.
+    // Scope to the toggle and refresh functions: moveNote still reloads.
+    let toggle_start = body
+        .find("toggleFolderNav()")
+        .expect("toggleFolderNav should exist");
+    let toggle_end = body[toggle_start..]
+        .find("refreshSidebarToAllNotes()")
+        .map(|i| toggle_start + i)
+        .expect("refreshSidebarToAllNotes should follow toggleFolderNav");
+    let toggle_fn = &body[toggle_start..toggle_end];
+    assert!(
+        !toggle_fn.contains("location.reload"),
+        "toggleFolderNav should not reload the page"
+    );
+
+    let refresh_start = body
+        .find("refreshSidebarToAllNotes() {")
+        .expect("refreshSidebarToAllNotes should exist");
+    let refresh_end = body[refresh_start..]
+        .find("focusEditor()")
+        .map(|i| refresh_start + i)
+        .expect("focusEditor should follow refreshSidebarToAllNotes");
+    let refresh_fn = &body[refresh_start..refresh_end];
+    assert!(
+        !refresh_fn.contains("location.reload"),
+        "refreshSidebarToAllNotes should not reload the page"
+    );
 }
 
 /// GET a path and return its status and body.

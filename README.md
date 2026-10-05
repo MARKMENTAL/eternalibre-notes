@@ -19,6 +19,8 @@ authenticator app. No telemetry, no accounts, no third-party services.
 - **Collapsible folder navigation** — a pull-tab button on mobile and a `View → Hide/Show Folder Nav` toggle at any width let you collapse the folder list to give the note list more room
 - **Independent mobile scrolling** — the folder nav and note list each scroll within their own bounded area on phones, instead of sharing one scroll position
 - **Save Note moved** — the action now lives in the `File` menu alongside `New Note`, rather than under `Edit`
+- **Folder-nav state persists** — hiding the folder nav saves the preference to browser storage and switches the sidebar to All Notes without navigating away from an open note, so unsaved edits survive
+- **Delete confirmation** — deleting a note now asks you to confirm, showing the note's folder and title so you know exactly what you are about to remove
 
 ## What's new in 0.2
 
@@ -33,7 +35,7 @@ authenticator app. No telemetry, no accounts, no third-party services.
 
 - **TOTP-locked by default** — authenticator app required on first launch and after every restart
 - **Server-side rendered** with Axum and Maud — fast, type-safe HTML templates
-- **Works without JavaScript** — note editing, search, and the login form are plain HTML; the menus, mobile tabs, live preview, and drag-and-drop re-filing are the JS-dependent parts
+- **Uses a small amount of JavaScript** — note editing, search, and the login form are plain HTML; the menus, mobile tabs, live preview, and drag-and-drop re-filing are the JS-dependent parts
 - **Alpine.js enhancements** — live Markdown preview, instant search, keyboard shortcuts
 - **File-based storage** — notes are persisted as Markdown files in `notes/`
 - **Virtual folders** — organize notes into folders without real directories; folders are encoded as `[Folder]uuid.md` filename prefixes
