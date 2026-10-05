@@ -1370,7 +1370,26 @@ button, input, select, textarea {
     display: flex;
   }
 
+  /* Independent scrolling: folder nav and note list each scroll within
+     their own area. The sidebar itself does not scroll on mobile. The
+     pull-tab button stays visible above the scrolling folder list. */
+  .sidebar {
+    overflow: hidden;
+  }
+
+  .folder-nav-container {
+    position: static;
+    display: flex;
+    flex-direction: column;
+    max-height: 40%;
+    flex-shrink: 0;
+  }
+
   .folder-nav {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
     padding: 8px;
   }
 
@@ -1380,6 +1399,10 @@ button, input, select, textarea {
   }
 
   .note-list {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
     padding: 8px;
   }
 

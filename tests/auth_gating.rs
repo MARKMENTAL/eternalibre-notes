@@ -1376,6 +1376,42 @@ async fn save_note_is_in_file_menu() {
     );
 }
 
+/// On mobile, the folder nav and note list scroll independently within their
+/// own bounded areas. The sidebar itself does not scroll, and the pull-tab
+/// toggle stays visible above the scrolling folder list.
+#[tokio::test]
+async fn mobile_folder_nav_scrolls_independently() {
+    let f = Fixture::provisioned("mobile-independent-scroll");
+    f.post_authed("/folders", "name=Alpha").await;
+
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The mobile CSS must make the sidebar non-scrollable and give the
+    // folder nav and note list their own scroll areas.
+    let mobile_css_start = body
+        .find("@media (max-width: 600px)")
+        .expect("mobile media query should exist");
+    let mobile_css = &body[mobile_css_start..];
+
+    assert!(
+        mobile_css.contains(".sidebar") && mobile_css.contains("overflow: hidden"),
+        "mobile sidebar should not scroll"
+    );
+    assert!(
+        mobile_css.contains(".folder-nav") && mobile_css.contains("overflow-y: auto"),
+        "folder nav should scroll independently"
+    );
+    assert!(
+        mobile_css.contains(".note-list") && mobile_css.contains("overflow-y: auto"),
+        "note list should scroll independently"
+    );
+    assert!(
+        mobile_css.contains("max-height: 40%"),
+        "folder nav container should have a max height"
+    );
+}
+
 /// The `folder-nav` list, and nothing else.
 ///
 /// Scoped deliberately: `.nav-count` also appears in the inlined stylesheet,

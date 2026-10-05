@@ -14,6 +14,12 @@ binds to all interfaces by default, so you can reach your notes from a phone or
 another machine on your network, protected by a TOTP code from your
 authenticator app. No telemetry, no accounts, no third-party services.
 
+## What's new in 0.2.1
+
+- **Collapsible folder navigation** — a pull-tab button on mobile and a `View → Hide/Show Folder Nav` toggle at any width let you collapse the folder list to give the note list more room
+- **Independent mobile scrolling** — the folder nav and note list each scroll within their own bounded area on phones, instead of sharing one scroll position
+- **Save Note moved** — the action now lives in the `File` menu alongside `New Note`, rather than under `Edit`
+
 ## What's new in 0.2
 
 - **Virtual folders** — organize notes into folders without creating real directories. A folder is encoded as a `[Folder]uuid.md` filename prefix, so a single notes directory can hold many of them
