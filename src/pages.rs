@@ -167,6 +167,7 @@ fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[Stri
                                 button type="submit" { "New Note" }
                             }
                         }
+                        li { button x-on:click="saveCurrentNote()" { "Save Note" } }
                         li { hr; }
                         li {
                             a href=(base.url("/export")) { "Export All Notes" }
@@ -259,7 +260,6 @@ fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[Stri
                     span { "Edit" }
                     ul class="menu-dropdown" {
                         li { button x-on:click="focusEditor()" { "Focus Editor" } }
-                        li { button x-on:click="saveCurrentNote()" { "Save Note" } }
                     }
                 }
                 li class="menu-item" tabindex="0"
@@ -285,6 +285,17 @@ fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[Stri
                                 x-bind:class="{ 'active-view': !previewVisible }"
                                 x-text="previewVisible ? 'Hide Preview' : 'Show Preview'" {
                                 "Toggle Preview"
+                            }
+                        }
+                        // Available at every width. The folder nav is a sidebar
+                        // sub-section, not a top-level pane, so collapsing it is
+                        // useful on mobile too — the pull-tab button is the other
+                        // entry point and shares this same state.
+                        li {
+                            button x-on:click="toggleFolderNav()"
+                                x-bind:class="{ 'active-view': folderNavCollapsed }"
+                                x-text="folderNavCollapsed ? 'Show Folder Nav' : 'Hide Folder Nav'" {
+                                "Toggle Folder Nav"
                             }
                         }
                     }
@@ -427,26 +438,36 @@ fn render_sidebar(
                 input type="text" name="name" placeholder="New folder name...";
                 button type="submit" { "+ New Folder" }
             }
-            ul class="folder-nav" {
-                // An empty drop folder is the root: dropping a note on "All
-                // Notes" un-files it, which is the only way back out of a
-                // folder once every note has left it.
-                li class={"nav-item" (if active_folder.is_none() { " active" } else { "" })}
-                    data-drop-folder="" {
-                    a href=(base.url("/")) {
-                        span class="nav-label" { "All Notes" }
-                        @if show_nav_count(active_folder, None) {
-                            span class="nav-count" { (notes.len()) }
+            div class="folder-nav-container"
+                x-bind:class="{ 'collapsed': folderNavCollapsed }" {
+                button type="button" class="folder-nav-toggle"
+                    x-on:click="toggleFolderNav()"
+                    x-bind:aria-expanded="(!folderNavCollapsed).toString()"
+                    aria-controls="folder-nav-list"
+                    aria-label="Toggle folder navigation" {
+                    span class="folder-nav-toggle-icon" aria-hidden="true" { "▾" }
+                }
+                ul id="folder-nav-list" class="folder-nav" {
+                    // An empty drop folder is the root: dropping a note on "All
+                    // Notes" un-files it, which is the only way back out of a
+                    // folder once every note has left it.
+                    li class={"nav-item" (if active_folder.is_none() { " active" } else { "" })}
+                        data-drop-folder="" {
+                        a href=(base.url("/")) {
+                            span class="nav-label" { "All Notes" }
+                            @if show_nav_count(active_folder, None) {
+                                span class="nav-count" { (notes.len()) }
+                            }
                         }
                     }
-                }
-                @for folder in folders {
-                    li class={"nav-item" (if active_folder == Some(folder.as_str()) { " active" } else { "" })}
-                        data-drop-folder=(folder) {
-                        a href=(folder_url(base, folder)) {
-                            span class="nav-label" { (folder) }
-                            @if show_nav_count(active_folder, Some(folder)) {
-                                span class="nav-count" { (by_folder.get(folder).map(|v| v.len()).unwrap_or(0)) }
+                    @for folder in folders {
+                        li class={"nav-item" (if active_folder == Some(folder.as_str()) { " active" } else { "" })}
+                            data-drop-folder=(folder) {
+                            a href=(folder_url(base, folder)) {
+                                span class="nav-label" { (folder) }
+                                @if show_nav_count(active_folder, Some(folder)) {
+                                    span class="nav-count" { (by_folder.get(folder).map(|v| v.len()).unwrap_or(0)) }
+                                }
                             }
                         }
                     }

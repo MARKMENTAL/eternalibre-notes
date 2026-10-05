@@ -1274,6 +1274,108 @@ async fn sidebar_shows_folder_navigation() {
     assert!(body.contains("nav-count"), "should show note counts");
 }
 
+/// The folder nav is wrapped in `.folder-nav-container` with a pull-tab toggle
+/// button. The toggle must be present in the markup at every width (CSS hides
+/// it on desktop) so mobile users can collapse/expand the folder list.
+#[tokio::test]
+async fn folder_nav_container_has_toggle_button() {
+    let f = Fixture::provisioned("folder-nav-toggle");
+    f.post_authed("/folders", "name=Alpha").await;
+
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        body.contains("class=\"folder-nav-container\""),
+        "the folder nav should be wrapped in .folder-nav-container"
+    );
+    assert!(
+        body.contains("class=\"folder-nav-toggle\""),
+        "the pull-tab toggle button should be in the markup"
+    );
+    assert!(
+        body.contains("toggleFolderNav()"),
+        "the toggle button should call toggleFolderNav()"
+    );
+    assert!(
+        body.contains("aria-controls=\"folder-nav-list\""),
+        "the toggle should reference the folder nav list via aria-controls"
+    );
+}
+
+/// The View menu has a Hide/Show Folder Nav toggle that shares the same state
+/// as the pull-tab button.
+#[tokio::test]
+async fn view_menu_has_folder_nav_toggle() {
+    let f = Fixture::provisioned("view-menu-folder-nav");
+
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Find the View menu dropdown and check it contains the folder nav toggle
+    let view_start = body
+        .find("toggleMenu('view')")
+        .expect("the View menu should exist");
+    let view_end = body[view_start..]
+        .find("</ul>")
+        .map(|i| view_start + i)
+        .expect("the View menu dropdown should close");
+    let view_menu = &body[view_start..view_end];
+
+    assert!(
+        view_menu.contains("toggleFolderNav()"),
+        "the View menu should have a folder nav toggle"
+    );
+    assert!(
+        view_menu.contains("Folder Nav"),
+        "the View menu toggle should mention Folder Nav"
+    );
+}
+
+/// Save Note lives in the File menu, not the Edit menu.
+#[tokio::test]
+async fn save_note_is_in_file_menu() {
+    let f = Fixture::provisioned("save-note-file-menu");
+    let id = f.create_note().await;
+
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Find the File menu dropdown
+    let file_start = body
+        .find("toggleMenu('file')")
+        .expect("the File menu should exist");
+    let file_end = body[file_start..]
+        .find("</ul>")
+        .map(|i| file_start + i)
+        .expect("the File menu dropdown should close");
+    let file_menu = &body[file_start..file_end];
+
+    assert!(
+        file_menu.contains("saveCurrentNote()"),
+        "Save Note should be in the File menu"
+    );
+    assert!(
+        file_menu.contains("Save Note"),
+        "Save Note label should be in the File menu"
+    );
+
+    // Find the Edit menu dropdown
+    let edit_start = body
+        .find("toggleMenu('edit')")
+        .expect("the Edit menu should exist");
+    let edit_end = body[edit_start..]
+        .find("</ul>")
+        .map(|i| edit_start + i)
+        .expect("the Edit menu dropdown should close");
+    let edit_menu = &body[edit_start..edit_end];
+
+    assert!(
+        !edit_menu.contains("saveCurrentNote()"),
+        "Save Note should NOT be in the Edit menu"
+    );
+}
+
 /// The `folder-nav` list, and nothing else.
 ///
 /// Scoped deliberately: `.nav-count` also appears in the inlined stylesheet,
@@ -1282,9 +1384,13 @@ async fn sidebar_shows_folder_navigation() {
 /// to pass while showing the wrong thing.
 fn folder_nav_region(body: &str) -> &str {
     let start = body
-        .find("<ul class=\"folder-nav\">")
+        .find("id=\"folder-nav-list\"")
         .expect("the folder nav should be present");
-    let rest = &body[start..];
+    // Back up to the opening <ul tag
+    let ul_start = body[..start]
+        .rfind("<ul")
+        .expect("the folder nav should have a <ul> tag");
+    let rest = &body[ul_start..];
     let end = rest.find("</ul>").expect("the folder nav should be closed");
     &rest[..end]
 }

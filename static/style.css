@@ -505,14 +505,7 @@ button, input, select, textarea {
    Needs its own background because it now overlays the scrolling note items.
    The z-index is scoped to the sidebar and safe under the stacking-context
    rule in AGENTS.md §7: no menu dropdowns live in here to trap. */
-.folder-nav {
-  list-style: none;
-  margin: 0;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-bottom: 1px solid var(--ui-border);
+.folder-nav-container {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -521,6 +514,52 @@ button, input, select, textarea {
      a long note list — and a squeezed sticky bar clips its own folder names,
      which are the drop target labels. */
   flex-shrink: 0;
+}
+
+.folder-nav {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+/* Pull-tab toggle — hidden on desktop, shown on mobile */
+.folder-nav-toggle {
+  display: none;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-bg);
+  border: none;
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--app-fg);
+  opacity: 0.6;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+.folder-nav-toggle:hover {
+  opacity: 0.8;
+}
+
+.folder-nav-toggle-icon {
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+/* Collapsed state — hides the folder list but keeps the toggle visible */
+.folder-nav-container.collapsed .folder-nav {
+  display: none;
+}
+
+.folder-nav-container.collapsed .folder-nav-toggle-icon {
+  transform: rotate(180deg);
 }
 
 .nav-item a {
@@ -1325,6 +1364,10 @@ button, input, select, textarea {
 
   .move-folder-form button {
     min-height: 44px;
+  }
+
+  .folder-nav-toggle {
+    display: flex;
   }
 
   .folder-nav {

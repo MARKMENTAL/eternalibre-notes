@@ -18,6 +18,9 @@ function app() {
     // the highlight follows the pointer instead of accumulating on every item
     // the cursor sweeps across.
     _dropTarget: null,
+    // Whether the folder navigation is collapsed. Shared between the mobile
+    // pull-tab button and the View menu toggle so they stay in sync.
+    folderNavCollapsed: false,
 
     init() {
       // Close menus on any click outside the menu bar. Alpine's `.outside`
@@ -256,6 +259,10 @@ function app() {
 
     toggleEditor() {
       this.editorVisible = !this.editorVisible;
+    },
+
+    toggleFolderNav() {
+      this.folderNavCollapsed = !this.folderNavCollapsed;
     },
 
     focusEditor() {
