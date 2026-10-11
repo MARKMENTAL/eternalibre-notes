@@ -1,6 +1,8 @@
 use crate::markdown::render_markdown;
 use crate::notes::Note;
+use crate::quotes::Quote;
 use crate::themes::{get_theme, PREDEFINED_THEMES};
+use crate::weather::{TempUnit, WeatherDisplay};
 use chrono::{DateTime, Utc};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -43,17 +45,26 @@ pub struct FolderContext<'a> {
     pub active_folder: Option<&'a str>,
 }
 
+/// Per-request data that varies with the current app page.
+pub struct AppPageContext<'a> {
+    pub current_note: Option<&'a Note>,
+    pub recent_notes: &'a [Note],
+    pub weather: &'a WeatherDisplay,
+    pub quotes: &'a [Quote],
+    pub query: Option<&'a str>,
+    pub message: Option<&'a str>,
+}
+
 pub fn render_app(
     theme_name: &str,
     notes: &[Note],
     folder_ctx: &FolderContext<'_>,
-    current_note: Option<&Note>,
-    query: Option<&str>,
-    message: Option<&str>,
+    page: &AppPageContext<'_>,
     base: &Base<'_>,
 ) -> Markup {
     let theme = get_theme(theme_name);
     let css = theme.to_css_block();
+    let current_note = page.current_note;
     let rendered_preview = current_note
         .map(|n| render_markdown(&n.content, theme))
         .unwrap_or_default();
@@ -65,6 +76,10 @@ pub fn render_app(
     } else {
         "notes"
     };
+    // The welcome state has nothing to preview, so the preview pane is not
+    // rendered at all and the layout drops to two columns.
+    let has_note = current_note.is_some();
+    let body_class = if has_note { "" } else { " no-preview" };
 
     html! {
         (DOCTYPE)
@@ -81,16 +96,16 @@ pub fn render_app(
                 (render_menu_bar(base, current_note, folder_ctx.folders))
                 (render_toolbar(
                     current_note,
-                    query,
+                    page.query,
                     theme_name,
                     folder_ctx.active_folder,
                     base,
                 ))
-                @if let Some(msg) = message {
+                @if let Some(msg) = page.message {
                     div class="flash-message" { "Error: " (msg) }
                 }
-                (render_tab_bar(default_tab))
-                main class="app-body"
+                (render_tab_bar(default_tab, has_note))
+                main class={"app-body" (body_class)}
                     x-bind:class="{ 'hide-editor': !editorVisible, 'hide-preview': !previewVisible }" {
                     (render_sidebar(
                         notes,
@@ -100,8 +115,16 @@ pub fn render_app(
                         default_tab,
                         base,
                     ))
-                    (render_editor(current_note, folder_ctx.folders, default_tab, base))
-                    (render_preview(&rendered_preview, default_tab))
+                (render_editor(
+                    current_note,
+                    folder_ctx.folders,
+                    page.recent_notes,
+                    page.weather,
+                    page.quotes,
+                    default_tab,
+                    base,
+                ))
+                    (render_preview(&rendered_preview, default_tab, has_note))
                 }
                 (render_status_bar(notes.len(), theme_name))
                 script {
@@ -122,7 +145,7 @@ fn escape_js(s: &str) -> String {
         .replace('\r', "\\r")
 }
 
-fn render_tab_bar(default_tab: &str) -> Markup {
+fn render_tab_bar(default_tab: &str, has_note: bool) -> Markup {
     html! {
         nav class="tab-bar" {
             button type="button" class="tab-button" data-tab-target="notes"
@@ -137,11 +160,13 @@ fn render_tab_bar(default_tab: &str) -> Markup {
                 span class="tab-icon" { "\u{270E}" }
                 span { "Write" }
             }
-            button type="button" class="tab-button" data-tab-target="preview"
-                x-on:click="setTab('preview')"
-                x-bind:class="{ 'active': tab === 'preview' }" {
-                span class="tab-icon" { "\u{1F4C4}" }
-                span { "Preview" }
+            @if has_note {
+                button type="button" class="tab-button" data-tab-target="preview"
+                    x-on:click="setTab('preview')"
+                    x-bind:class="{ 'active': tab === 'preview' }" {
+                    span class="tab-icon" { "\u{1F4C4}" }
+                    span { "Preview" }
+                }
             }
             script {
                 (PreEscaped(format!(
@@ -154,6 +179,9 @@ fn render_tab_bar(default_tab: &str) -> Markup {
 }
 
 fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[String]) -> Markup {
+    let theme_return = theme_return_path(current_note);
+    let weather_href = dedicated_page_href(base, "/weather", current_note);
+    let welcome_href = dedicated_page_href(base, "/welcome", current_note);
     html! {
         nav class="menu-bar" {
             ul class="menu-list" {
@@ -280,11 +308,15 @@ fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[Stri
                                 "Toggle Editor"
                             }
                         }
-                        li class="desktop-only" {
-                            button x-on:click="togglePreview()"
-                                x-bind:class="{ 'active-view': !previewVisible }"
-                                x-text="previewVisible ? 'Hide Preview' : 'Show Preview'" {
-                                "Toggle Preview"
+                        // No preview pane exists without an open note, so the
+                        // toggle would only offer an empty view.
+                        @if current_note.is_some() {
+                            li class="desktop-only" {
+                                button x-on:click="togglePreview()"
+                                    x-bind:class="{ 'active-view': !previewVisible }"
+                                    x-text="previewVisible ? 'Hide Preview' : 'Show Preview'" {
+                                    "Toggle Preview"
+                                }
                             }
                         }
                         // Available at every width. The folder nav is a sidebar
@@ -298,6 +330,15 @@ fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[Stri
                                 "Toggle Folder Nav"
                             }
                         }
+                        // Mobile-only shortcuts to the dedicated pages. Desktop
+                        // already shows the full dashboard, so these entries
+                        // stay out of the way there; see `.mobile-only`.
+                        li class="mobile-only" {
+                            a href=(welcome_href) { "Welcome" }
+                        }
+                        li class="mobile-only" {
+                            a href=(weather_href) { "Weather" }
+                        }
                     }
                 }
                 li class="menu-item" tabindex="0"
@@ -309,6 +350,7 @@ fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[Stri
                             li {
                                 form action=(base.url("/theme")) method="post" {
                                     input type="hidden" name="theme" value=(theme.name);
+                                    input type="hidden" name="return_to" value=(theme_return);
                                     button type="submit" { (theme.name) }
                                 }
                             }
@@ -347,6 +389,7 @@ fn render_toolbar(
     active_folder: Option<&str>,
     base: &Base<'_>,
 ) -> Markup {
+    let theme_return = theme_return_path(current_note);
     html! {
         div class="toolbar" {
             div class="toolbar-group" {
@@ -381,6 +424,7 @@ fn render_toolbar(
             }
             div class="toolbar-group" {
                 form action=(base.url("/theme")) method="post" class="theme-form" x-on:change="$event.target.form.submit()" {
+                    input type="hidden" name="return_to" value=(theme_return);
                     label { "Theme:" }
                     select name="theme" {
                         @for theme in PREDEFINED_THEMES {
@@ -544,6 +588,9 @@ fn move_select_id(note: &Note) -> String {
 fn render_editor(
     current_note: Option<&Note>,
     folders: &[String],
+    recent_notes: &[Note],
+    weather: &WeatherDisplay,
+    quotes: &[Quote],
     default_tab: &str,
     base: &Base<'_>,
 ) -> Markup {
@@ -629,25 +676,355 @@ fn render_editor(
                     }
                 }
             } @else {
-                div class="empty-state" {
-                    p { "Select a note or create a new one." }
+                (render_welcome(recent_notes, weather, quotes, base))
+            }
+        }
+    }
+}
+
+fn theme_return_path(current_note: Option<&Note>) -> String {
+    current_note
+        .map(|note| format!("/notes/{}", note.id))
+        .unwrap_or_else(|| "/".to_string())
+}
+
+fn dedicated_page_href(base: &Base<'_>, path: &str, current_note: Option<&Note>) -> String {
+    let target = theme_return_path(current_note);
+    let encoded = utf8_percent_encode(&target, NON_ALPHANUMERIC).to_string();
+    base.url(&format!("{path}?return_to={encoded}"))
+}
+
+fn render_welcome_heading(quotes: &[Quote]) -> Markup {
+    html! {
+        header class="welcome-heading" {
+            p class="welcome-eyebrow" { "YOUR NOTES, YOUR SPACE" }
+            h1 id="welcome-title" { "Welcome to EternaLibre Notes" }
+            p class="welcome-tagline" { "A quiet place for ideas, plans, and everything worth keeping." }
+            (render_quote_rotator(quotes))
+        }
+    }
+}
+
+fn render_recent_card(recent_notes: &[Note], base: &Base<'_>) -> Markup {
+    html! {
+        section class="welcome-card recent-card" aria-labelledby="recent-notes-title" {
+            h2 id="recent-notes-title" { "Recently updated" }
+            @if recent_notes.is_empty() {
+                p class="welcome-muted" { "Your notes will show up here. Create one whenever you’re ready." }
+            } @else {
+                ul class="welcome-recent-list" {
+                    @for note in recent_notes.iter().take(5) {
+                        li {
+                            a href=(base.url(&format!("/notes/{}", note.id))) {
+                                span class="welcome-note-title" { (note.title) }
+                                span class="welcome-note-meta" { (relative_time(note.updated_at)) }
+                                @let preview = note.preview(100);
+                                @if !preview.is_empty() {
+                                    span class="welcome-note-preview" { (preview) }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-fn render_preview(html_content: &str, default_tab: &str) -> Markup {
-    let active = if default_tab == "preview" {
-        " mobile-active"
-    } else {
-        ""
-    };
+fn render_welcome(
+    recent_notes: &[Note],
+    weather: &WeatherDisplay,
+    quotes: &[Quote],
+    base: &Base<'_>,
+) -> Markup {
     html! {
-        section class={"preview-pane" (active)} data-tab-pane="preview"
-            x-bind:class="{ 'mobile-active': tab === 'preview' }" {
-            div id="preview" class="markdown-body" x-html="previewHtml" {
-                (PreEscaped(html_content))
+        section class="welcome-state" aria-labelledby="welcome-title" {
+            (render_welcome_heading(quotes))
+            div class="welcome-columns" {
+                (render_recent_card(recent_notes, base))
+                section class="welcome-card weather-card" aria-labelledby="weather-title" {
+                    h2 id="weather-title" { "Local weather" }
+                    (render_weather_table(weather))
+                    (render_weather_form(weather, base, "weather-location"))
+                }
+            }
+            (render_quotes_manager(quotes, base))
+        }
+    }
+}
+
+/// Rotating quote under the welcome tagline. The first quote is server-rendered
+/// so the block reads sensibly with JavaScript disabled; `app.js` swaps in the
+/// rest on a timer when more than one quote exists.
+fn render_quote_rotator(quotes: &[Quote]) -> Markup {
+    html! {
+        @if quotes.is_empty() {
+        } @else {
+            div class="welcome-quotes" {
+                blockquote id="welcome-quote" class="welcome-quote" aria-live="polite" {
+                    p id="welcome-quote-text" class="welcome-quote-text" { (quotes[0].text) }
+                    @if !quotes[0].author.trim().is_empty() {
+                        footer {
+                            "— " span id="welcome-quote-author" { (quotes[0].author) }
+                        }
+                    } @else {
+                        footer {
+                            "— " span id="welcome-quote-author" { "Anonymous" }
+                        }
+                    }
+                }
+                @if quotes.len() > 1 {
+                    div class="welcome-quote-controls" {
+                        button type="button" id="quote-prev" class="btn btn-small" { "‹ Prev" }
+                        button type="button" id="quote-pause" class="btn btn-small" aria-pressed="false" { "Pause" }
+                        button type="button" id="quote-next" class="btn btn-small" { "Next ›" }
+                    }
+                }
+                script { (PreEscaped(welcome_quotes_js(quotes))) }
+            }
+        }
+    }
+}
+
+fn welcome_quotes_js(quotes: &[Quote]) -> String {
+    // JSON keeps user-supplied quotes intact; escaping `</` stops a quote from
+    // closing the script element itself.
+    let json = serde_json::to_string(quotes).unwrap_or_else(|_| "[]".to_string());
+    format!(
+        "window.__WELCOME_QUOTES__ = {};",
+        json.replace("</", "<\\/")
+    )
+}
+
+fn render_weather_table(weather: &WeatherDisplay) -> Markup {
+    html! {
+        @if let Some(location) = weather.location.as_deref() {
+            @if weather.current.is_none() && weather.days.is_empty() {
+                p class="welcome-muted" { "Weather is temporarily unavailable." }
+            } @else {
+                div class="weather-table-wrapper" {
+                    table class="weather-table" {
+                        caption class="weather-caption" {
+                            "Weather for " (location) " (" (weather.units.label()) ")"
+                        }
+                        thead {
+                            tr {
+                                th scope="col" { "Day" }
+                                th scope="col" { "Conditions" }
+                                th scope="col" { "Temp" }
+                                th scope="col" { "High" }
+                                th scope="col" { "Low" }
+                            }
+                        }
+                        tbody {
+                            @if let Some(now) = weather.current.as_ref() {
+                                tr class="weather-now-row" {
+                                    th scope="row" { "Now" }
+                                    td { (now.desc) }
+                                    td { (now.temp(weather.units)) }
+                                    td class="weather-na" { "—" }
+                                    td class="weather-na" { "—" }
+                                }
+                            }
+                            @for day in &weather.days {
+                                tr {
+                                    th scope="row" { (day.short_date()) }
+                                    td { (day.desc) }
+                                    td { (day.avg(weather.units)) }
+                                    td { (day.high(weather.units)) }
+                                    td { (day.low(weather.units)) }
+                                }
+                            }
+                        }
+                    }
+                }
+                @if let Some(now) = weather.current.as_ref() {
+                    p class="weather-details" {
+                        "Feels like " (now.feels(weather.units)) " · Humidity " (now.humidity) "%"
+                    }
+                }
+            }
+            p class="weather-location" { "Location: " (location) }
+        } @else {
+            p class="welcome-muted" { "Set a location to see current weather from wttr.in." }
+        }
+    }
+}
+
+fn render_weather_form(weather: &WeatherDisplay, base: &Base<'_>, id: &str) -> Markup {
+    let units = weather.units;
+    html! {
+        form action=(base.url("/settings/weather")) method="post" class="weather-location-form" {
+            label for=(id) { "Location" }
+            input
+                id=(id)
+                type="text"
+                name="location"
+                maxlength="100"
+                placeholder="City or place name"
+                value=[weather.location.as_deref()];
+            fieldset class="weather-units" {
+                legend { "Units" }
+                label {
+                    input
+                        type="radio"
+                        name="units"
+                        value="c"
+                        checked[units == TempUnit::Celsius];
+                    " Celsius"
+                }
+                label {
+                    input
+                        type="radio"
+                        name="units"
+                        value="f"
+                        checked[units == TempUnit::Fahrenheit];
+                    " Fahrenheit"
+                }
+            }
+            button type="submit" class="btn" { "Save location" }
+            p class="weather-privacy" {
+                "The server sends this location to wttr.in to retrieve weather. Leave it blank to clear it."
+            }
+        }
+    }
+}
+
+fn render_quotes_manager(quotes: &[Quote], base: &Base<'_>) -> Markup {
+    html! {
+        section class="welcome-card quotes-card" aria-labelledby="quotes-title" {
+            h2 id="quotes-title" { "Quotes" }
+            p class="welcome-muted" {
+                "Add quotes to rotate beneath the welcome message. One submission adds one quote."
+            }
+            form action=(base.url("/settings/quotes")) method="post" class="quote-form" {
+                label for="quote-text" { "Quote" }
+                textarea
+                    id="quote-text"
+                    name="quote"
+                    maxlength="500"
+                    rows="3"
+                    placeholder="Write something worth re-reading…"
+                    required="required" {}
+                label for="quote-author" { "Author" }
+                input
+                    id="quote-author"
+                    type="text"
+                    name="author"
+                    maxlength="100"
+                    placeholder="Who said it?";
+                button type="submit" class="btn" { "Add quote" }
+            }
+            @if quotes.is_empty() {
+                p class="welcome-muted" { "No quotes yet. The rotator appears once you add one." }
+            } @else {
+                ul class="quote-list" {
+                    @for (index, quote) in quotes.iter().enumerate() {
+                        li class="quote-item" {
+                            blockquote class="quote-item-body" {
+                                p { (quote.text) }
+                                @if !quote.author.trim().is_empty() {
+                                    footer { "— " (quote.author) }
+                                }
+                            }
+                            form action=(base.url("/settings/quotes/delete")) method="post" class="quote-delete-form" {
+                                input type="hidden" name="index" value=(index);
+                                button type="submit" class="btn btn-small" { "Remove" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn render_weather_page(
+    theme_name: &str,
+    weather: &WeatherDisplay,
+    return_to: &str,
+    base: &Base<'_>,
+) -> Markup {
+    let theme = get_theme(theme_name);
+    html! {
+        (DOCTYPE)
+        html lang="en" data-theme=(theme_name) {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
+                title { "Weather - EternaLibre Notes" }
+                style { (PreEscaped(theme.to_css_block())) }
+                style { (PreEscaped(include_str!("../static/style.css"))) }
+                script defer src=(base.url("/static/alpine.min.js")) {}
+            }
+            body class="weather-page" x-data="app()" x-on:keydown="handleKeydown($event)" {
+                (render_menu_bar(base, None, &[]))
+                main class="weather-page-main" {
+                    p class="welcome-eyebrow" { "MOBILE WEATHER" }
+                    h1 { "Weather" }
+                    section class="welcome-card weather-card" aria-labelledby="weather-page-title" {
+                        h2 id="weather-page-title" { "Local weather" }
+                        (render_weather_table(weather))
+                        (render_weather_form(weather, base, "weather-page-location"))
+                    }
+                    a class="back-link" href=(base.url(return_to)) { "Back" }
+                }
+                (render_status_bar(0, theme_name))
+                script {
+                    "window.__INITIAL_PREVIEW__ = ``;"
+                    "window.__BASE_PATH__ = `" (PreEscaped(escape_js(base.prefix()))) "`;"
+                    (PreEscaped(include_str!("../static/app.js")))
+                }
+            }
+        }
+    }
+}
+
+pub fn render_welcome_page(
+    theme_name: &str,
+    recent_notes: &[Note],
+    quotes: &[Quote],
+    return_to: &str,
+    base: &Base<'_>,
+) -> Markup {
+    let theme = get_theme(theme_name);
+    html! {
+        (DOCTYPE)
+        html lang="en" data-theme=(theme_name) {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
+                title { "Welcome - EternaLibre Notes" }
+                style { (PreEscaped(theme.to_css_block())) }
+                style { (PreEscaped(include_str!("../static/style.css"))) }
+                script defer src=(base.url("/static/alpine.min.js")) {}
+            }
+            body class="welcome-page" x-data="app()" x-on:keydown="handleKeydown($event)" {
+                (render_menu_bar(base, None, &[]))
+                main class="welcome-page-main welcome-state" {
+                    (render_welcome_heading(quotes))
+                    (render_recent_card(recent_notes, base))
+                    a class="back-link" href=(base.url(return_to)) { "Back" }
+                }
+                (render_status_bar(recent_notes.len(), theme_name))
+                script {
+                    "window.__INITIAL_PREVIEW__ = ``;"
+                    "window.__BASE_PATH__ = `" (PreEscaped(escape_js(base.prefix()))) "`;"
+                    (PreEscaped(include_str!("../static/app.js")))
+                }
+            }
+        }
+    }
+}
+
+fn render_preview(html_content: &str, default_tab: &str, has_note: bool) -> Markup {
+    html! {
+        @if has_note {
+            section class={"preview-pane" (if default_tab == "preview" { " mobile-active" } else { "" })} data-tab-pane="preview"
+                x-bind:class="{ 'mobile-active': tab === 'preview' }" {
+                div id="preview" class="markdown-body" x-html="previewHtml" {
+                    (PreEscaped(html_content))
+                }
             }
         }
     }
@@ -817,12 +1194,12 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                     p {
                         "A server-side rendered, copyleft Markdown notes application written in Rust. \
                          A toolkit for making a private notes cloud: run the server yourself, \
-                         on your own hardware, and the notes go nowhere else."
+                         on your own hardware, with notes kept in local Markdown files."
                     }
                     p {
                         "The server binds to all interfaces by default, so you can reach your notes \
                          from a phone or another machine on your network. It is protected by a TOTP \
-                         code from your authenticator app, and it never talks to a third party."
+                         code from your authenticator app. Optional weather sends only the location you configure to wttr.in."
                     }
                     ul class="about-features" {
                         // Counted from the palette itself, and split by
@@ -840,7 +1217,7 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                         }
                         li { "Syntax highlighting for fenced code blocks" }
                         li { "Notes stored as plain Markdown files on disk" }
-                        li { "TOTP-locked, with no accounts or third-party services" }
+                        li { "TOTP-locked, with no accounts or telemetry; weather lookup is optional" }
                         li { "Note editing, search, and theming work without JavaScript" }
                         li { "Export saved notes as Markdown, themed HTML, or PDF via the browser print dialog" }
                     }
@@ -875,8 +1252,8 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                     }
                     p class="about-colophon" {
                         (format!(
-                            "Version {}. Licensed under the GNU General Public \
-                             License v3.0 or later. No telemetry, no accounts, no vendor.",
+                             "Version {}. Licensed under the GNU General Public \
+                              License v3.0 or later. No telemetry or accounts; weather is opt-in.",
                             env!("CARGO_PKG_VERSION"),
                         ))
                     }

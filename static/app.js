@@ -42,6 +42,7 @@ function app() {
       }
 
       this.initNoteDragging();
+      this.initQuoteRotation();
     },
 
     /// Wires up dragging a sidebar note onto a folder nav item to re-file it.
@@ -145,6 +146,10 @@ function app() {
     destroy() {
       if (this._onDocClick) {
         document.removeEventListener('click', this._onDocClick);
+      }
+      if (this._quoteTimer) {
+        clearInterval(this._quoteTimer);
+        this._quoteTimer = null;
       }
       if (this._onDragStart) {
         document.removeEventListener('dragstart', this._onDragStart);
@@ -351,6 +356,103 @@ function app() {
     focusEditor() {
       const editor = document.getElementById('editor');
       if (editor) editor.focus();
+    },
+
+    /// Rotates the welcome quote beneath the tagline.
+    ///
+    /// The first quote is server-rendered, so without JS the block simply
+    /// stays put. Rotation is a progressive enhancement for sighted mouse
+    /// and touch users: it pauses on hover/focus, honours
+    /// `prefers-reduced-motion`, and exposes an explicit Pause control.
+    initQuoteRotation() {
+      const quotes = window.__WELCOME_QUOTES__ || [];
+      const textEl = document.getElementById('welcome-quote-text');
+      const authorEl = document.getElementById('welcome-quote-author');
+      if (!quotes.length || quotes.length < 2 || !textEl || !authorEl) return;
+
+      this._quotes = quotes;
+      this._quoteIndex = 0;
+      this._quotesPaused = false;
+
+      const show = (index) => {
+        const quote = this._quotes[index];
+        if (!quote) return;
+        textEl.textContent = quote.text || '';
+        authorEl.textContent =
+          quote.author && quote.author.trim() ? quote.author : 'Anonymous';
+      };
+
+      const next = () => {
+        this._quoteIndex = (this._quoteIndex + 1) % this._quotes.length;
+        show(this._quoteIndex);
+      };
+
+      const prev = () => {
+        this._quoteIndex =
+          (this._quoteIndex - 1 + this._quotes.length) % this._quotes.length;
+        show(this._quoteIndex);
+      };
+
+      const pauseBtn = document.getElementById('quote-pause');
+      const nextBtn = document.getElementById('quote-next');
+      const prevBtn = document.getElementById('quote-prev');
+      const quoteEl = document.getElementById('welcome-quote');
+
+      const stop = () => {
+        if (this._quoteTimer) {
+          clearInterval(this._quoteTimer);
+          this._quoteTimer = null;
+        }
+      };
+
+      const start = () => {
+        stop();
+        // Auto-rotation is a motion affordance: when the OS asks for reduced
+        // motion, leave the first server-rendered quote in place instead.
+        const reduced =
+          window.matchMedia &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced && !this._quotesPaused) {
+          this._quoteTimer = setInterval(next, 8000);
+        }
+      };
+
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          next();
+          start();
+        });
+      }
+      if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+          prev();
+          start();
+        });
+      }
+      if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+          this._quotesPaused = !this._quotesPaused;
+          pauseBtn.textContent = this._quotesPaused ? 'Play' : 'Pause';
+          pauseBtn.setAttribute('aria-pressed', String(this._quotesPaused));
+          if (this._quotesPaused) {
+            stop();
+          } else {
+            start();
+          }
+        });
+      }
+      if (quoteEl) {
+        quoteEl.addEventListener('mouseenter', stop);
+        quoteEl.addEventListener('mouseleave', () => {
+          if (!this._quotesPaused) start();
+        });
+        quoteEl.addEventListener('focusin', stop);
+        quoteEl.addEventListener('focusout', () => {
+          if (!this._quotesPaused) start();
+        });
+      }
+
+      start();
     },
 
     saveCurrentNote() {

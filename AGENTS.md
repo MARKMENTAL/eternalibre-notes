@@ -11,7 +11,7 @@ The name splits into its two halves: **Eterna** for permanence and **Libre** for
 ## 1. Project Philosophy & Identity
 
 * **Name**: EternaLibre Notes — "Free notes, forever."
-* **Mission**: Reclaiming high-performance Rust web development under copyleft terms (GPLv3+). Rejecting heavy client-side JavaScript frameworks and proprietary note silos in favor of software freedom, privacy, and near-zero memory footprint.
+* **Mission**: Reclaiming high-performance Rust web development under copyleft terms (GPLv3+). Rejecting heavy client-side JavaScript frameworks and proprietary note silos in favor of software freedom, privacy, and near-zero memory footprint. Optional weather lookup is opt-in and sends the configured location to wttr.in.
 * **UI Paradigm**: **"Apple Elegance meets Classic Desktop GUI"**
 * **Apple Notes Polish**: Fluid sidebars, smooth note item previews, refined typography, generous padding, subtle contrast, and graceful theme transitions.
 * **Traditional Desktop Utility**: Top menu bar (`File`, `Edit`, `View`, `Theme`, `Help`), quick action toolbars, collapsible editor/preview panes, keyboard shortcuts, and a status bar. Panes are not draggable/resizable.
@@ -46,7 +46,15 @@ The application layout follows a classic 3-column / top-menu layout rendered cle
 1. **Fluid Typography**: Inter/SF Pro or high-quality system sans-serif for the interface; Monospace for Markdown source; clean sans for HTML preview.
 2. **Subtle Elevation & Borders**: Soft 1px borders using `--ui-border` / `--app-bg` contrast shades rather than heavy drop shadows.
 3. **Apple-style Note List**: Sidebar lists show note title, relative timestamp, and a single line preview snippet in muted text.
-4. **Progressive Enhancement**: Note editing, server-side search, and the login form work with JavaScript disabled via HTML forms and page reloads. The visible theme selector currently submits through Alpine's change handler, so theme changes from the UI require JavaScript. Menu dropdowns, mobile tab switching, live preview, drag-and-drop re-filing, and automatic opening of the PDF print dialog are also JavaScript-dependent.
+4. **Progressive Enhancement**: Note editing, server-side search, weather-location settings, and the login form work with JavaScript disabled via HTML forms and page reloads. The visible theme selector currently submits through Alpine's change handler, so theme changes from the toolbar require JavaScript. Menu dropdowns, mobile tab switching, live preview, drag-and-drop re-filing, and automatic opening of the PDF print dialog are also JavaScript-dependent.
+
+When no note is open, the editor pane renders a welcome dashboard with up to five recently updated notes from the current sidebar result set. Its optional weather card submits the location and a Celsius/Fahrenheit radio as a plain form; the server stores the location in `.weather_location` and the unit in `.weather_units` under the notes directory and sends the location to wttr.in only when the dashboard or the dedicated `/weather` page is requested. The `format=j1` response keeps both scales so switching units reuses the cache without refetching. Results and failed checks are cached for 15 minutes, and requests time out after four seconds. Without a saved location, no weather request is made. The table shows current conditions as its top row followed by each forecast date wttr.in returns (currently three dates including today); render what is present rather than assuming a five-day horizon.
+
+A quotes manager under the weather card accepts one quote/author pair per plain-form submission into `.quotes.json` alongside the notes. The first saved quote is server-rendered beneath the welcome tagline; `app.js` rotates the rest on an 8s timer with Prev/Next and a Pause control, pausing on hover/focus and honouring `prefers-reduced-motion`. Without JavaScript the first quote simply stays put.
+
+`View → Weather` is a `.mobile-only` menu entry (hidden on desktop via a `min-width: 601px` rule, the inverse of `.desktop-only`) linking to the dedicated mobile-first `/weather` page with a `return_to` back to `/` or the open note. The page reuses the cached weather table and settings form with its own element ids. `View → Welcome` follows the same pattern for `/welcome`: header, quote rotator, and recent notes only.
+
+With no note open the preview pane is not rendered at all — there is nothing to preview — and the layout carries `app-body no-preview` to reclaim the third column. The Preview tab and the View preview toggle are omitted in the same state; opening a note restores all three.
 
 Re-filing a note has **three entry points, and they are not equivalent**. `File > Move to Folder…` is a submenu whose entries are plain forms posting to `POST /notes/:id/move`; the *move* is server-rendered and JS-free, but the menu will not open without JS, so it needs JS on every device. `.move-folder-bar` in the editor pane is also a plain form and works with JS off, but it is `display: none` above 600px, so it is mobile-only. Both are present on a phone.
 
@@ -65,6 +73,8 @@ The status bar currently displays `Saved` as a static label; it does not track u
 * **Language**: Rust (`edition = "2021"`)
 * **Server Framework**: **Axum 0.7** (async, Tower ecosystem)
 * **Auth**: `totp-rs` 6 (TOTP), `qrcode` 0.14 (inline SVG QR), `rand` 0.10 (session tokens)
+* **Weather**: `reqwest` with rustls for the optional server-side wttr.in `format=j1` request; location in `notes/.weather_location`, units in `notes/.weather_units`
+* **Quotes**: local `.quotes.json` in the notes directory; no network involved
 * **SSR Templating**: **`maud` 0.26** (compiled, type-safe HTML macros)
 * **Reactivity / Live Swap**: **Alpine.js 3.14** (vendored locally in `static/`, ~15 KB)
 * **Markdown Engine**: `pulldown-cmark` (with table, tasklist, strikethrough, and footnote extensions)
@@ -98,6 +108,8 @@ eternalibre-notes/
 │   ├── markdown.rs             # Markdown → HTML with code block interception
 │   ├── syntax.rs               # syntect engine + per-theme tmTheme generation
 │   ├── themes.rs               # 40 predefined themes + CSS variable engine
+│   ├── weather.rs              # Opt-in wttr.in location/units, cached j1 lookup, forecast table data
+│   ├── quotes.rs               # Local quote/author list stored as `.quotes.json`
 │   └── storage.rs              # Storage re-export module
 ├── static/
 │   ├── alpine.min.js           # Vendored Alpine.js
@@ -289,7 +301,7 @@ The trap is that the CSS is *correct and present*. You can add a complete mobile
 
 `Theme::is_dark` classifies on the local gamma-encoded `relative_luminance` rather than the linearised one in `syntax.rs`. That is safe *only* because the shipped palettes are strongly bimodal: the lightest dark background scores 0.095 and the darkest light one 0.63, so any threshold in that gap agrees. If a future palette lands near 0.5, switch this to the WCAG function rather than nudging the threshold — the two agree on all 40 themes today, so the current answer is not a close call.
 
-**Every outbound link carries `rel="noopener noreferrer"`.** These are the only links that leave the machine, and the app advertises that it never talks to a third party. `about_page_external_links_are_hardened` walks every `<a href="https://` in the rendered page, so a link added later without the attributes fails rather than shipping quietly. It caught the Help menu's GPL link, which had `target="_blank"` and no `rel`.
+**Every outbound link carries `rel="noopener noreferrer"`.** `about_page_external_links_are_hardened` walks every `<a href="https://` in the rendered page, so a link added later without the attributes fails rather than shipping quietly. It caught the Help menu's GPL link, which had `target="_blank"` and no `rel`. Separately, users may opt into server-side wttr.in weather by saving a location; the request is cached and the configured location is sent to that service.
 
 **It is not missing a `.tab-bar` because that is a bug.** The tab bar exists to switch between the notes/editor/preview panes; the about page has no panes. Bolting it on would be chrome for its own sake. The menu bar *is* kept, because the app keeps it on mobile too.
 
@@ -343,7 +355,12 @@ Outside-click detection is a manual `document` listener in an `init()` hook with
 | `POST` | `/notes` | Create a new note, redirect to it |
 | `POST` | `/notes/:id` | Update or delete based on the `_method` form field |
 | `POST` | `/preview` | Returns rendered HTML for live preview |
-| `POST` | `/theme` | Sets the `theme` cookie, redirects to `/` |
+| `POST` | `/theme` | Sets the `theme` cookie, redirects to the open note when one is selected |
+| `POST` | `/settings/weather` | Saves the wttr.in location and Celsius/Fahrenheit unit alongside the notes |
+| `POST` | `/settings/quotes` | Adds one quote/author pair to the welcome rotator |
+| `POST` | `/settings/quotes/delete` | Removes a saved quote by index |
+| `GET` | `/weather` | Dedicated mobile-first weather page with a safe `return_to` back link |
+| `GET` | `/welcome` | Simplified mobile-first welcome page (header, quotes, recent notes) |
 | `GET` | `/about` | Static about page |
 | `GET` | `/export` | Downloads all notes as a single Markdown file |
 | `GET` | `/static/alpine.min.js` | Public, compile-time embedded Alpine.js bundle |

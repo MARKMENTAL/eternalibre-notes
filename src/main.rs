@@ -1,6 +1,6 @@
 use clap::Parser;
 use eternalibre_notes::routes::{self, AppState};
-use eternalibre_notes::{auth, notes, setup, syntax};
+use eternalibre_notes::{auth, notes, quotes::QuoteStore, setup, syntax, weather::WeatherService};
 use std::net::SocketAddr;
 
 #[derive(Parser, Debug)]
@@ -61,6 +61,11 @@ async fn main() {
     let state = AppState {
         auth,
         base_path: base_path.into(),
+        weather: std::sync::Arc::new(WeatherService::new(
+            notes::notes_dir().join(".weather_location"),
+            notes::notes_dir().join(".weather_units"),
+        )),
+        quotes: std::sync::Arc::new(QuoteStore::new(notes::notes_dir().join(".quotes.json"))),
     };
     let base = state.base_path.to_string();
 

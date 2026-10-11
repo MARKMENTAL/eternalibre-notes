@@ -7,7 +7,9 @@
 use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use eternalibre_notes::auth::{AuthError, AuthState};
+use eternalibre_notes::quotes::QuoteStore;
 use eternalibre_notes::routes::{self, AppState};
+use eternalibre_notes::weather::WeatherService;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -78,6 +80,11 @@ impl Fixture {
             app: routes::app(AppState {
                 auth: auth.clone(),
                 base_path: base_path.into(),
+                weather: Arc::new(WeatherService::new(
+                    secret_file.with_extension("weather-location"),
+                    secret_file.with_extension("weather-units"),
+                )),
+                quotes: Arc::new(QuoteStore::new(secret_file.with_extension("quotes"))),
             }),
             auth,
             secret_file,
@@ -200,6 +207,10 @@ impl Fixture {
 
     /// POST carrying the session cookie.
     async fn post_authed(&self, uri: &str, body: &str) -> (StatusCode, String, Option<String>) {
+        respond(self.post_authed_response(uri, body).await).await
+    }
+
+    async fn post_authed_response(&self, uri: &str, body: &str) -> axum::response::Response {
         let res = self
             .app
             .clone()
@@ -214,7 +225,7 @@ impl Fixture {
             )
             .await
             .unwrap();
-        respond(res).await
+        res
     }
 
     /// Creates a note and returns its id.
@@ -628,6 +639,30 @@ async fn write_routes_require_authentication() {
     // Theme changes are gated too.
     let (status, _, _) = f.post_form("/theme", "theme=Dracula").await;
     assert_eq!(status, StatusCode::SEE_OTHER);
+
+    // The optional third-party weather location is gated as well.
+    let (status, _, _) = f.post_form("/settings/weather", "location=Somewhere").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(
+        !f.secret_file.with_extension("weather-location").exists(),
+        "anonymous weather settings request must not persist a location"
+    );
+
+    // Quote settings and the mobile weather page sit behind the same gate.
+    let (status, _, _) = f
+        .post_form("/settings/quotes", "quote=Hello&author=Someone")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(
+        !f.secret_file.with_extension("quotes").exists(),
+        "anonymous quote request must not persist quotes"
+    );
+    let (status, _, _) = f.post_form("/settings/quotes/delete", "index=0").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let (status, _) = f.get("/weather").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let (status, _) = f.get("/welcome").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
 }
 
 #[tokio::test]
@@ -657,7 +692,7 @@ async fn delete_form_has_confirmation_prompt() {
 
     // Find the delete form by its note-specific action
     let form_start = body
-        .find(&format!("/notes/{id}\""))
+        .find(&format!("action=\"/notes/{id}\""))
         .expect("delete form should exist");
     let form_end = body[form_start..]
         .find("</form>")
@@ -1753,6 +1788,334 @@ async fn theme_cookie_alongside_session_still_works() {
     assert!(String::from_utf8_lossy(&bytes).contains("data-theme=\"Dracula\""));
 }
 
+#[tokio::test]
+async fn theme_change_preserves_the_open_note_and_rejects_external_return_targets() {
+    let f = Fixture::with_base_path("theme-return", "/forgejo")
+        .login_over_http()
+        .await;
+    let id = f.create_note().await;
+    let body = format!("theme=Dracula&return_to=%2Fnotes%2F{id}");
+    let response = f.post_authed_response("/theme", &body).await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok());
+    assert_eq!(location, Some(f.expect(&format!("/notes/{id}")).as_str()));
+
+    let response = f
+        .post_authed_response("/theme", "theme=Light&return_to=%2F")
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        response
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|value| value.to_str().ok()),
+        Some(f.expect("/").as_str())
+    );
+
+    let response = f
+        .post_authed_response("/theme", "theme=Light&return_to=https%3A%2F%2Fevil.example")
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok());
+    assert_eq!(location, Some(f.expect("/").as_str()));
+}
+
+#[tokio::test]
+async fn welcome_dashboard_and_weather_location_are_server_rendered() {
+    let f = Fixture::provisioned("welcome-dashboard");
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(r#"class="welcome-state""#));
+    assert!(body.contains("Welcome to EternaLibre Notes"));
+    assert!(body.contains(r#"action="/settings/weather" method="post""#));
+    assert!(body.contains("wttr.in"));
+    assert!(body.contains(r#"class="welcome-recent-list""#));
+}
+
+#[tokio::test]
+async fn weather_location_setting_is_persisted_and_can_be_cleared() {
+    let f = Fixture::provisioned("weather-setting");
+    let setting_path = f.secret_file.with_extension("weather-location");
+    let (status, _, location) = f
+        .post_authed("/settings/weather", "location=San+Francisco")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location.as_deref(), Some("/"));
+    assert_eq!(
+        std::fs::read_to_string(&setting_path).unwrap(),
+        "San Francisco"
+    );
+
+    let (status, _, _) = f.post_authed("/settings/weather", "location=").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(
+        !setting_path.exists(),
+        "blank location should clear the setting"
+    );
+}
+
+#[tokio::test]
+async fn weather_units_are_saved_and_offered_as_radios() {
+    let f = Fixture::provisioned("weather-units");
+    let units_path = f.secret_file.with_extension("weather-units");
+    let (status, _, _) = f
+        .post_authed("/settings/weather", "location=Oslo&units=f")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(std::fs::read_to_string(&units_path).unwrap(), "f");
+
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains(r#"name="units" value="f""#),
+        "weather form should offer a Fahrenheit radio"
+    );
+    assert!(
+        body.contains(r#"name="units" value="c""#),
+        "weather form should offer a Celsius radio"
+    );
+
+    let (status, _, _) = f
+        .post_authed("/settings/weather", "location=Oslo&units=kelvin")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        std::fs::read_to_string(&units_path).unwrap(),
+        "f",
+        "an invalid unit must not overwrite the saved preference"
+    );
+}
+
+#[tokio::test]
+async fn weather_table_renders_current_first_then_forecast_days() {
+    use eternalibre_notes::pages::{render_app, AppPageContext, Base, FolderContext};
+    use eternalibre_notes::weather::{WeatherCurrent, WeatherDay, WeatherDisplay};
+
+    let weather = WeatherDisplay {
+        location: Some("London".to_string()),
+        units: eternalibre_notes::weather::TempUnit::Fahrenheit,
+        current: Some(WeatherCurrent {
+            desc: "Overcast".to_string(),
+            temp_c: "15".to_string(),
+            temp_f: "59".to_string(),
+            feels_c: "13".to_string(),
+            feels_f: "55".to_string(),
+            humidity: "51".to_string(),
+        }),
+        days: vec![WeatherDay {
+            date: "2026-10-12".to_string(),
+            desc: "Sunny".to_string(),
+            avg_c: "14".to_string(),
+            avg_f: "57".to_string(),
+            max_c: "17".to_string(),
+            max_f: "62".to_string(),
+            min_c: "13".to_string(),
+            min_f: "55".to_string(),
+        }],
+    };
+    let folders = Vec::new();
+    let folder_ctx = FolderContext {
+        folders: &folders,
+        active_folder: None,
+    };
+    let no_quotes: Vec<eternalibre_notes::quotes::Quote> = Vec::new();
+    let base = Base::new("");
+    let page = AppPageContext {
+        current_note: None,
+        recent_notes: &[],
+        weather: &weather,
+        quotes: &no_quotes,
+        query: None,
+        message: None,
+    };
+    let html = render_app("Dark", &[], &folder_ctx, &page, &base).into_string();
+    assert!(
+        html.contains(r#"class="weather-table""#),
+        "forecast should render as a table"
+    );
+    let now = html.find("Now").expect("current row should lead the table");
+    let forecast = html.find("Oct 12").expect("forecast day should follow");
+    assert!(now < forecast, "current weather must be the top table row");
+    assert!(
+        html.contains("59°F"),
+        "active Fahrenheit unit should render"
+    );
+    assert!(
+        html.contains("62°F"),
+        "forecast high should follow the unit"
+    );
+}
+
+#[tokio::test]
+async fn quotes_can_be_added_listed_and_removed() {
+    let f = Fixture::provisioned("quotes-crud");
+    let quotes_path = f.secret_file.with_extension("quotes");
+    let (status, _, _) = f
+        .post_authed("/settings/quotes", "quote=Stay+curious.&author=Ada")
+        .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let saved = std::fs::read_to_string(&quotes_path).unwrap();
+    assert!(saved.contains("Stay curious."));
+    assert!(saved.contains("Ada"));
+
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(r#"id="welcome-quote""#));
+    assert!(body.contains("Stay curious."));
+    assert!(body.contains("window.__WELCOME_QUOTES__"));
+
+    let (status, _, _) = f.post_authed("/settings/quotes/delete", "index=0").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(
+        !quotes_path.exists(),
+        "removing the last quote should clear its file"
+    );
+}
+
+#[tokio::test]
+async fn mobile_weather_entry_links_to_a_dedicated_page() {
+    let f = Fixture::provisioned("mobile-weather");
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains(r#"class="mobile-only""#),
+        "View menu should carry a mobile-only weather entry"
+    );
+    assert!(
+        body.contains("/weather?return_to=%2F"),
+        "weather entry should link back to the dashboard"
+    );
+
+    let (status, body) = f.get_authed("/weather?return_to=%2F").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(r#"class="weather-page-main""#));
+    assert!(body.contains(r#"class="weather-table-wrapper""#) || body.contains("wttr.in"));
+    assert!(body.contains(r#"class="back-link""#));
+}
+
+/// The welcome state has nothing to preview, so the preview pane, its mobile
+/// tab, and its View toggle must not render. Opening a note restores all
+/// three. Anchored on template-only attributes (`class="preview-pane"`,
+/// `data-tab-target="preview"`) rather than bare words that also match the
+/// inlined stylesheet.
+#[tokio::test]
+async fn welcome_state_omits_the_preview_pane() {
+    let f = Fixture::provisioned("welcome-no-preview");
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains(r#"class="app-body no-preview""#),
+        "welcome layout should drop to two columns"
+    );
+    assert!(
+        !body.contains(r#"class="preview-pane""#),
+        "no note means nothing to preview"
+    );
+    assert!(
+        !body.contains(r#"data-tab-target="preview""#),
+        "the Preview tab would only offer an empty view"
+    );
+    assert!(
+        !body.contains(r#"x-on:click="togglePreview()""#),
+        "the View menu should not offer a preview toggle with no pane"
+    );
+
+    let id = f.create_note().await;
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        !body.contains(r#"class="app-body no-preview""#),
+        "an open note restores the three-column layout"
+    );
+    assert!(body.contains(r#"class="preview-pane"#));
+    assert!(body.contains(r#"data-tab-target="preview""#));
+    assert!(body.contains(r#"x-on:click="togglePreview()""#));
+}
+
+#[tokio::test]
+async fn mobile_welcome_entry_links_to_a_simplified_page() {
+    let f = Fixture::provisioned("mobile-welcome");
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("/welcome?return_to=%2F"),
+        "View menu should link to the simplified welcome page"
+    );
+
+    let (status, body) = f.get_authed("/welcome?return_to=%2F").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(r#"class="welcome-page-main"#));
+    assert!(body.contains("Welcome to EternaLibre Notes"));
+    assert!(body.contains(r#"class="welcome-recent-list""#));
+    assert!(
+        !body.contains(r#"class="weather-table""#),
+        "the simplified page carries no weather table"
+    );
+    assert!(
+        !body.contains(r#"name="units""#),
+        "units belong to the full weather settings, not this page"
+    );
+    assert!(
+        !body.contains(r#"action="/settings/quotes""#),
+        "quote management stays on the dashboard"
+    );
+    assert!(body.contains(r#"class="back-link""#));
+}
+
+#[tokio::test]
+async fn welcome_lists_recent_notes_and_theme_forms_carry_a_safe_return_target() {
+    use chrono::Utc;
+    use eternalibre_notes::notes::Note;
+    use eternalibre_notes::pages::{render_app, AppPageContext, Base, FolderContext};
+    use eternalibre_notes::weather::WeatherDisplay;
+
+    let mut note = Note::new("A recent thought", "A little preview.");
+    note.id = "550e8400-e29b-41d4-a716-446655440000".to_string();
+    note.updated_at = Utc::now();
+    let folders = Vec::new();
+    let folder_ctx = FolderContext {
+        folders: &folders,
+        active_folder: None,
+    };
+    let weather = WeatherDisplay::empty();
+    let no_quotes: Vec<eternalibre_notes::quotes::Quote> = Vec::new();
+    let base = Base::new("");
+    let welcome_page = AppPageContext {
+        current_note: None,
+        recent_notes: &[note.clone()],
+        weather: &weather,
+        quotes: &no_quotes,
+        query: None,
+        message: None,
+    };
+    let html = render_app("Dark", &[], &folder_ctx, &welcome_page, &base).into_string();
+    let note_url = format!("href=\"/notes/{}\"", note.id);
+    assert!(html.contains(&note_url));
+    assert!(html.contains("A recent thought"));
+
+    let note_context = AppPageContext {
+        current_note: Some(&note),
+        recent_notes: &[],
+        weather: &weather,
+        quotes: &no_quotes,
+        query: None,
+        message: None,
+    };
+    let note_page = render_app("Dark", &[], &folder_ctx, &note_context, &base).into_string();
+    assert_eq!(
+        note_page
+            .matches(r#"name="return_to" value="/notes/550e8400-e29b-41d4-a716-446655440000""#)
+            .count(),
+        eternalibre_notes::themes::PREDEFINED_THEMES.len() + 1
+    );
+}
+
 // ----------------------------------------------------------- about page ----
 
 /// The about page's mobile styling hangs entirely off this one class.
@@ -1811,7 +2174,7 @@ async fn about_page_inlines_the_stylesheet() {
 #[tokio::test]
 async fn every_screen_declares_a_viewport() {
     let f = Fixture::fresh("viewport").login_over_http().await;
-    for path in ["/", "/about"] {
+    for path in ["/", "/about", "/weather", "/welcome"] {
         let (status, body) = f.get_authed(path).await;
         assert_eq!(status, StatusCode::OK, "{path}");
         assert!(
@@ -1924,9 +2287,9 @@ async fn about_page_theme_counts_come_from_the_palette() {
     );
 }
 
-/// Outbound links must carry `rel="noopener noreferrer"`. The app advertises
-/// that it never talks to a third party, and these are the only links that
-/// leave the machine, so they should not leak a referrer when followed.
+/// Outbound links must carry `rel="noopener noreferrer"` so they do not leak
+/// a referrer when followed. The optional weather request is server-side and
+/// is covered separately from these browser navigation links.
 #[tokio::test]
 async fn about_page_external_links_are_hardened() {
     let f = Fixture::fresh("about-links").login_over_http().await;
@@ -2085,6 +2448,11 @@ async fn alpine_is_served_app_absolute_even_with_a_base_path() {
     let app = routes::app(AppState {
         auth,
         base_path: "/forgejo".into(),
+        weather: Arc::new(WeatherService::new(
+            secret_file.with_extension("weather-location"),
+            secret_file.with_extension("weather-units"),
+        )),
+        quotes: Arc::new(QuoteStore::new(secret_file.with_extension("quotes"))),
     });
 
     let (status, body) = fetch(&app, "/static/alpine.min.js").await;
@@ -2171,6 +2539,11 @@ async fn alpine_is_available_without_a_static_directory() {
     let app = routes::app(AppState {
         auth,
         base_path: "".into(),
+        weather: Arc::new(WeatherService::new(
+            secret_file.with_extension("weather-location"),
+            secret_file.with_extension("weather-units"),
+        )),
+        quotes: Arc::new(QuoteStore::new(secret_file.with_extension("quotes"))),
     });
 
     // Nothing is read from disk at request time; the bundle is linked in.

@@ -12,8 +12,10 @@ use std::sync::Arc;
 use crate::auth::{AuthError, AuthState, SESSION_COOKIE};
 use crate::markdown::render_markdown;
 use crate::notes::{self, Note};
-use crate::pages::{self, Base, FolderContext};
+use crate::pages::{self, AppPageContext, Base, FolderContext};
+use crate::quotes::{Quote, QuoteStore};
 use crate::themes::get_theme;
+use crate::weather::{TempUnit, WeatherDisplay, WeatherService};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -22,6 +24,8 @@ pub struct AppState {
     /// Empty means mounted at the root, which is the default and the only
     /// configuration most installs need.
     pub base_path: Arc<str>,
+    pub weather: Arc<WeatherService>,
+    pub quotes: Arc<QuoteStore>,
 }
 
 impl AppState {
@@ -82,6 +86,11 @@ mod tests {
         let root = AppState {
             auth: Arc::new(AuthState::with_secret_path("/nonexistent-test-secret")),
             base_path: "".into(),
+            weather: Arc::new(WeatherService::new(
+                "/nonexistent-weather-location".into(),
+                "/nonexistent-weather-units".into(),
+            )),
+            quotes: Arc::new(QuoteStore::new("/nonexistent-quotes".into())),
         };
         assert_eq!(root.url("/"), "/");
         assert_eq!(root.url("/about"), "/about");
@@ -89,6 +98,8 @@ mod tests {
         let mounted = AppState {
             auth: root.auth.clone(),
             base_path: "/forgejo".into(),
+            weather: root.weather.clone(),
+            quotes: root.quotes.clone(),
         };
         assert_eq!(mounted.url("/"), "/forgejo/");
         assert_eq!(mounted.url("/about"), "/forgejo/about");
@@ -122,6 +133,11 @@ pub fn router(state: AppState) -> Router {
         .route("/notes/:id/move", post(move_note_route))
         .route("/preview", post(preview_route))
         .route("/theme", post(theme_route))
+        .route("/settings/weather", post(weather_settings_route))
+        .route("/settings/quotes", post(quotes_add_route))
+        .route("/settings/quotes/delete", post(quotes_delete_route))
+        .route("/weather", get(weather_page_route))
+        .route("/welcome", get(welcome_page_route))
         .route("/about", get(about_route))
         .route("/export", get(export_route))
         .route(
@@ -338,6 +354,8 @@ async fn index(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
     let theme = get_theme_from_cookie(&headers);
+    let weather = state.weather.display().await;
+    let quotes = state.quotes.list();
     let all_notes = notes::list_notes()?;
     let folders = notes::list_folders()?;
 
@@ -359,21 +377,22 @@ async fn index(
     } else {
         all_notes
     };
+    let recent_notes: Vec<Note> = notes.iter().take(5).cloned().collect();
 
     let base = Base::new(&state.base_path);
     let folder_ctx = FolderContext {
         folders: &folders,
         active_folder: active_folder.as_deref(),
     };
-    let html = pages::render_app(
-        &theme,
-        &notes,
-        &folder_ctx,
-        None,
-        query.q.as_deref(),
-        query.error.as_deref(),
-        &base,
-    );
+    let page = AppPageContext {
+        current_note: None,
+        recent_notes: &recent_notes,
+        weather: &weather,
+        quotes: &quotes,
+        query: query.q.as_deref(),
+        message: query.error.as_deref(),
+    };
+    let html = pages::render_app(&theme, &notes, &folder_ctx, &page, &base);
     Ok(Html(html.into_string()))
 }
 
@@ -408,21 +427,24 @@ async fn show_note_route(
     } else {
         all_notes
     };
+    let recent_notes: Vec<Note> = notes.iter().take(5).cloned().collect();
 
     let base = Base::new(&state.base_path);
     let folder_ctx = FolderContext {
         folders: &folders,
         active_folder: active_folder.as_deref(),
     };
-    let html = pages::render_app(
-        &theme,
-        &notes,
-        &folder_ctx,
-        Some(&note),
-        query.q.as_deref(),
-        None,
-        &base,
-    );
+    let weather = WeatherDisplay::empty();
+    let no_quotes: Vec<Quote> = Vec::new();
+    let page = AppPageContext {
+        current_note: Some(&note),
+        recent_notes: &recent_notes,
+        weather: &weather,
+        quotes: &no_quotes,
+        query: query.q.as_deref(),
+        message: None,
+    };
+    let html = pages::render_app(&theme, &notes, &folder_ctx, &page, &base);
     Ok(Html(html.into_string()))
 }
 
@@ -561,6 +583,8 @@ async fn preview_route(
 #[derive(Deserialize)]
 struct ThemeForm {
     theme: String,
+    #[serde(default)]
+    return_to: String,
 }
 
 async fn theme_route(
@@ -570,7 +594,8 @@ async fn theme_route(
     // Validate theme name
     let _ = get_theme(&form.theme);
 
-    let mut response = Redirect::to(&state.url("/")).into_response();
+    let return_path = sanitize_return_path(&form.return_to);
+    let mut response = Redirect::to(&state.url(&return_path)).into_response();
     let cookie = format!(
         "theme={}; Path={}; Max-Age=31536000; SameSite=Lax",
         form.theme,
@@ -580,6 +605,144 @@ async fn theme_route(
         .headers_mut()
         .insert(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
     Ok(response)
+}
+
+#[derive(Deserialize)]
+struct WeatherLocationForm {
+    location: String,
+    #[serde(default)]
+    units: Option<String>,
+}
+
+async fn weather_settings_route(
+    State(state): State<AppState>,
+    Form(form): Form<WeatherLocationForm>,
+) -> Result<impl IntoResponse, AppError> {
+    if let Some(units) = form.units {
+        if TempUnit::parse(&units).is_none() {
+            return Ok(
+                error_redirect(&state, "Units must be Celsius or Fahrenheit.").into_response(),
+            );
+        }
+        if let Err(err) = state.weather.set_units(&units).await {
+            return Ok(error_redirect(&state, &err.to_string()).into_response());
+        }
+    }
+    if let Err(err) = state.weather.set_location(&form.location).await {
+        return Ok(error_redirect(&state, &err.to_string()).into_response());
+    }
+    Ok(Redirect::to(&state.url("/")).into_response())
+}
+
+#[derive(Deserialize)]
+struct QuoteForm {
+    quote: String,
+    #[serde(default)]
+    author: String,
+}
+
+async fn quotes_add_route(
+    State(state): State<AppState>,
+    Form(form): Form<QuoteForm>,
+) -> Result<impl IntoResponse, AppError> {
+    if let Err(err) = state.quotes.add(&form.quote, &form.author) {
+        return Ok(error_redirect(&state, &err.to_string()).into_response());
+    }
+    Ok(Redirect::to(&state.url("/")).into_response())
+}
+
+#[derive(Deserialize)]
+struct QuoteDeleteForm {
+    index: usize,
+}
+
+async fn quotes_delete_route(
+    State(state): State<AppState>,
+    Form(form): Form<QuoteDeleteForm>,
+) -> Result<impl IntoResponse, AppError> {
+    if let Err(err) = state.quotes.remove(form.index) {
+        return Ok(error_redirect(&state, &err.to_string()).into_response());
+    }
+    Ok(Redirect::to(&state.url("/")).into_response())
+}
+
+#[derive(Deserialize)]
+struct WeatherPageQuery {
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn weather_page_route(
+    State(state): State<AppState>,
+    Query(query): Query<WeatherPageQuery>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let theme = get_theme_from_cookie(&headers);
+    let weather = state.weather.display().await;
+    let return_to = sanitize_return_path(query.return_to.as_deref().unwrap_or("/"));
+    let base = Base::new(&state.base_path);
+    let html = pages::render_weather_page(&theme, &weather, &return_to, &base);
+    Ok(Html(html.into_string()))
+}
+
+#[derive(Deserialize)]
+struct WelcomePageQuery {
+    #[serde(default)]
+    q: Option<String>,
+    #[serde(default)]
+    folder: Option<String>,
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+async fn welcome_page_route(
+    State(state): State<AppState>,
+    Query(query): Query<WelcomePageQuery>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let theme = get_theme_from_cookie(&headers);
+    let all_notes = notes::list_notes()?;
+    let active_folder = query.folder.clone().filter(|f| !f.is_empty());
+    let notes: Vec<Note> = if let Some(ref q) = query.q {
+        let q = q.to_lowercase();
+        all_notes
+            .into_iter()
+            .filter(|n| {
+                n.title.to_lowercase().contains(&q) || n.content.to_lowercase().contains(&q)
+            })
+            .collect()
+    } else if let Some(ref f) = active_folder {
+        all_notes
+            .into_iter()
+            .filter(|n| n.folder.as_deref() == Some(f.as_str()))
+            .collect()
+    } else {
+        all_notes
+    };
+    let recent_notes: Vec<Note> = notes.iter().take(5).cloned().collect();
+    let quotes = state.quotes.list();
+    let return_to = sanitize_return_path(query.return_to.as_deref().unwrap_or("/"));
+    let base = Base::new(&state.base_path);
+    let html = pages::render_welcome_page(&theme, &recent_notes, &quotes, &return_to, &base);
+    Ok(Html(html.into_string()))
+}
+
+/// Shared guard for client-controlled return targets. Only the app root and
+/// canonical `/notes/<uuid>` paths survive; everything else falls back to `/`
+/// so a crafted form or query string cannot turn a redirect or link into an
+/// open redirect.
+fn sanitize_return_path(raw: &str) -> String {
+    if raw == "/" {
+        "/".to_string()
+    } else if let Some(id) = raw.strip_prefix("/notes/") {
+        if uuid::Uuid::parse_str(id).is_ok_and(|uuid| uuid.hyphenated().to_string() == id) {
+            raw.to_string()
+        } else {
+            "/".to_string()
+        }
+    } else {
+        "/".to_string()
+    }
 }
 
 async fn about_route(

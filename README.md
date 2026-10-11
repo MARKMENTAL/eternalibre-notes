@@ -2,6 +2,10 @@
 
 **Free notes, forever.**
 
+![EternaLibre Notes running in Firefox ESR 140 on Debian 13](screenshot.png)
+
+*EternaLibre Notes running in Firefox ESR 140 on Debian 13.*
+
 A server-side rendered (SSR) Markdown notes application written in Rust.
 
 EternaLibre Notes combines **GNU software freedom** (GPL v3.0-or-later) with the
@@ -9,10 +13,23 @@ fluid elegance of Apple Notes and the predictable utility of classic desktop
 GUI applications: a menu bar, split-pane editor, and file-based note storage.
 
 It is a toolkit for making a **private notes cloud**. You run the server
-yourself, on your own hardware, and the notes go nowhere else. The server
-binds to all interfaces by default, so you can reach your notes from a phone or
-another machine on your network, protected by a TOTP code from your
-authenticator app. No telemetry, no accounts, no third-party services.
+yourself, on your own hardware, and notes stay in local Markdown files. The
+server binds to all interfaces by default, so you can reach your notes from a
+phone or another machine on your network, protected by a TOTP code from your
+authenticator app. There is no telemetry or account service. Optional weather
+lookup sends the location you configure to wttr.in; leave it unset to keep the
+app from making that request.
+
+## What's new in 0.3.0
+
+- **Welcome dashboard** — recent notes and an optional local weather card fill the editor when no note is open
+- **Private-by-default weather** — configure a location in the app; it is stored with your notes and sent to wttr.in only to retrieve weather
+- **Celsius/Fahrenheit choice** — the weather table keeps both scales and switches without refetching
+- **Welcome quotes** — save quote/author pairs that rotate beneath the welcome message
+- **Mobile weather page** — `View → Weather` opens a mobile-first weather screen on phones
+- **Mobile welcome page** — `View → Welcome` opens a simplified header/quotes/recent-notes screen on phones
+- **Quieter welcome state** — with nothing open the empty preview pane, tab, and toggle are omitted
+- **Theme changes keep your place** — changing themes while editing returns to the open note
 
 ## What's new in 0.2.1
 
@@ -45,6 +62,9 @@ authenticator app. No telemetry, no accounts, no third-party services.
 - **Markdown extras** — tables, tasklists, strikethrough, and footnotes via `pulldown-cmark`
 - **Syntax highlighting** — code blocks are highlighted using the current theme's ANSI palette via `syntect`
 - **Mobile responsive** — collapses to a Notes/Write/Preview tab layout on phones, with 44px touch targets
+- **Optional weather** — server-side wttr.in lookup with a Celsius/Fahrenheit choice, a current-plus-forecast table, caching, and a graceful offline fallback
+- **Welcome quotes** — locally stored quotes rotate under the welcome message with pause and reduced-motion support
+- **Mobile weather page** — `View → Weather` offers a mobile-first weather view on phones
 
 ## Quick Start
 
@@ -61,7 +81,7 @@ cargo run -- --base-path /el-notes
 
 Then open http://127.0.0.1:3000 (or your chosen address).
 
-Notes are stored in the `notes/` directory as `.md` files with YAML frontmatter.
+Notes are stored in the `notes/` directory as `.md` files with YAML frontmatter. If you configure weather, its location is stored in `notes/.weather_location` and its unit in `notes/.weather_units` alongside the notes and both follow `--notes-dir`. Saved quotes live in `notes/.quotes.json`.
 
 ## Virtual Folders
 
@@ -166,4 +186,3 @@ This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version. See `LICENSE` for the full text.
-
