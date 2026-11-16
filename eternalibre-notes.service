@@ -1,0 +1,21 @@
+[Unit]
+Description=EternaLibre Notes
+After=network.target
+
+# First-run TOTP enrolment is interactive. Run the binary once in a terminal
+# from the WorkingDirectory below before enabling this unit. The condition
+# keeps systemd from starting without a secret and stops a restart loop.
+ConditionPathExists=%h/eternalibre-notes/target/release/.totp_secret
+
+[Service]
+Type=simple
+# This directory is both the binary location and the data directory:
+# notes/ and .totp_secret live here. Never run `cargo clean` against it if storing your install here.
+WorkingDirectory=%h/eternalibre-notes/target/release
+# If you serve behind a reverse-proxy subdirectory, add your prefix:
+# ExecStart=%h/eternalibre-notes/target/release/eternalibre-notes --base-path /your-prefix
+ExecStart=%h/eternalibre-notes/target/release/eternalibre-notes
+Restart=no
+
+[Install]
+WantedBy=default.target

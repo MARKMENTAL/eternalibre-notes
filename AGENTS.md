@@ -371,6 +371,8 @@ Single-note exports are authentication-gated and always use the saved note on di
 
 Notes are stored as `<uuid>.md` files in `notes/` with YAML frontmatter carrying `title`, `created`, and `updated` timestamps. When no frontmatter is present, the title is derived from the first `# ` heading. The directory is overridable via the `--notes-dir` flag or the `ETERNALIBRE_NOTES_DIR` env var, which is how the integration tests stay out of real user data.
 
+`.totp_secret` and the default `notes/` directory are resolved against the **process working directory**, not the binary's location. A systemd unit, container, or supervisor must set `WorkingDirectory` to the persistent data directory. This checkout's live instance keeps both under `target/release`, so `cargo clean` would delete the real notes and the authenticator secret.
+
 ---
 
 ## 9b. TOTP Authentication

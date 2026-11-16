@@ -114,11 +114,16 @@ Enrollment deliberately happens in the terminal rather than on a web page. There
 
 **Every launch after that:** you land on `/login` and need a current code. Sessions last one hour and live only in memory, so restarting the server invalidates them.
 
-**Lost your authenticator?** Delete the secret and restart:
+**Lost your authenticator?** Delete the secret in the data directory and restart:
 
 ```bash
 rm .totp_secret
 ```
+
+If you run under systemd, `.totp_secret` is in the unit's `WorkingDirectory`
+(for the example unit, `target/release`), and the service's
+`ConditionPathExists` makes it skip on the next start. Run the binary manually
+once in that directory to re-enrol, then start the service again.
 
 There is no recovery-code fallback by design — that file is the only thing holding the secret, and it stays on your machine.
 
@@ -136,6 +141,67 @@ ProxyPassReverse /el-notes/  http://127.0.0.1:3000/
 ```
 
 The proxy strips the prefix, so the app still sees ordinary paths and adds the prefix back when generating links, form actions, and redirects. The session cookie's `Path` is scoped to the prefix, so the token is not sent to sibling apps on the same host.
+
+## Running as a systemd user service
+
+The repository includes `eternalibre-notes.service`, a user-unit template. It
+assumes the checkout is at `~/eternalibre-notes` and that the release binary and
+the app's data both live in `target/release`; edit `WorkingDirectory` and
+`ExecStart` if yours differ.
+
+**1. Build the release binary:**
+
+```bash
+cargo build --release
+```
+
+**2. Enrol your authenticator once, manually.** First-run setup prints a QR code
+and reads the code from stdin before the listener binds, so it cannot run under
+systemd:
+
+```bash
+cd ~/eternalibre-notes/target/release
+./eternalibre-notes --base-path /el-notes
+```
+
+Scan the QR or enter the Base32 secret, type the code, then stop the process.
+Use your own `--base-path` if you serve behind a reverse-proxy subdirectory.
+
+**3. Install and start the unit:**
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp eternalibre-notes.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now eternalibre-notes
+```
+
+If an installed unit already exists, compare it first with
+`systemctl --user cat eternalibre-notes.service`. In particular, keep any
+existing `--base-path` value on `ExecStart`.
+
+**4. Start at boot without logging in:**
+
+```bash
+sudo loginctl enable-linger "$USER"
+```
+
+**5. Check it:**
+
+```bash
+systemctl --user status eternalibre-notes
+journalctl --user -u eternalibre-notes -f
+```
+
+> **`WorkingDirectory` is the data directory.** The app writes `notes/` and
+> `.totp_secret` relative to it. The example uses `target/release` because that
+> is where the release binary lives and, for an existing install, where the data
+> already lives. **Do not run `cargo clean` against that tree** unless you have
+> backed up or moved those files first. For a new install, point
+> `WorkingDirectory` at a dedicated persistent directory instead.
+
+`UMask=0077` applies to files created by the service from then on. Existing note
+files keep their current permissions.
 
 ## Command Line Options
 
@@ -179,6 +245,7 @@ cargo fmt
 | `src/themes.rs` | 40 predefined themes and CSS variable engine |
 | `static/style.css` | Full application stylesheet |
 | `static/app.js` | Alpine.js component: preview, search, menus, tabs, drag-and-drop re-filing |
+| `eternalibre-notes.service` | systemd user-unit template for running the release binary |
 | `tests/auth_gating.rs` | End-to-end tests: auth gate, folders, note moves, nav counts, base paths, about page |
 
 ## License
