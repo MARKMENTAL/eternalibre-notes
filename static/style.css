@@ -515,12 +515,12 @@ button, input, select, textarea {
 }
 
 /* Folder Navigation */
-/* Sticky so the folders stay visible, and droppable, however long the note
-   list grows — `.sidebar` is the scroll container and the nav sits above the
-   list inside it. Nothing auto-scrolls a nested overflow container mid-drag,
-   so without this the drag targets simply scroll out of reach.
+/* One row shows the current folder; the list opens on demand. Sticky on
+   desktop so the picker, and its drop targets, stay reachable however long
+   the note list grows — `.sidebar` is the scroll container and the picker
+   sits above the list inside it.
 
-   Needs its own background because it now overlays the scrolling note items.
+   Needs its own background because it overlays the scrolling note items.
    The z-index is scoped to the sidebar and safe under the stacking-context
    rule in AGENTS.md §7: no menu dropdowns live in here to trap. */
 .folder-nav-container {
@@ -528,56 +528,118 @@ button, input, select, textarea {
   top: 0;
   z-index: 2;
   background-color: var(--app-bg);
-  /* `.sidebar` is a flex column, so without this the nav can be squeezed by
-     a long note list — and a squeezed sticky bar clips its own folder names,
-     which are the drop target labels. */
+  /* `.sidebar` is a flex column, so without this the picker can be squeezed
+     by a long note list — and a squeezed row clips the current folder name. */
   flex-shrink: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.folder-nav {
-  list-style: none;
-  margin: 0;
-  padding: 8px;
+/* Anchors the absolutely positioned dropdown just below the summary. */
+.folder-picker {
+  position: relative;
+}
+
+.folder-picker-summary {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-bottom: 1px solid var(--ui-border);
-}
-
-/* Pull-tab toggle — hidden on desktop, shown on mobile */
-.folder-nav-toggle {
-  display: none;
-  width: 100%;
-  min-height: 44px;
   align-items: center;
-  justify-content: center;
-  background: var(--app-bg);
-  border: none;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--ui-border);
-  color: var(--app-fg);
-  opacity: 0.6;
   cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  font-weight: 500;
+  list-style: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+/* Hide the native disclosure marker; the chevron carries the same signal. */
+.folder-picker-summary::-webkit-details-marker {
+  display: none;
+}
+
+.folder-picker-summary::marker {
+  content: "";
+}
+
+.folder-picker-summary:hover {
+  background-color: var(--ui-hover);
+}
+
+/* Keep the count pill from blending into the row's hover background. */
+.folder-picker-summary:hover .nav-count {
+  background-color: var(--app-bg);
+}
+
+.folder-picker-summary:focus-visible {
+  outline: 2px solid var(--ansi-4);
+  outline-offset: -2px;
+}
+
+.folder-picker-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker-chevron {
   flex-shrink: 0;
-  transition: opacity 0.15s ease;
-}
-
-.folder-nav-toggle:hover {
-  opacity: 0.8;
-}
-
-.folder-nav-toggle-icon {
-  font-size: 18px;
+  font-size: 12px;
   line-height: 1;
+  opacity: 0.6;
   transition: transform 0.15s ease;
 }
 
-/* Collapsed state — hides the folder list but keeps the toggle visible */
-.folder-nav-container.collapsed .folder-nav {
+.folder-picker[open] .folder-picker-chevron {
+  transform: rotate(180deg);
+}
+
+/* The dropdown reuses the nav list, so counts, active styling, and drag
+   targets stay in one place. Absolute positioning keeps opening it from
+   pushing the note list down. */
+.folder-nav {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background-color: var(--app-bg);
+  border-bottom: 1px solid var(--ui-border);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* A closed disclosure hides its content, but pin it explicitly so an author
+   `display` rule can never leak the list out. */
+.folder-picker:not([open]) .folder-nav {
   display: none;
 }
 
-.folder-nav-container.collapsed .folder-nav-toggle-icon {
-  transform: rotate(180deg);
+/* Hidden from the View menu. During a drag the drop targets are the point, so
+   reveal the container even when collapsed — without the summary, so the note
+   list is not pushed down mid-gesture. */
+.folder-nav-container.collapsed {
+  display: none;
+}
+
+.sidebar.dragging-note .folder-nav-container.collapsed {
+  display: block;
+}
+
+.sidebar.dragging-note .folder-nav-container.collapsed .folder-picker-summary {
+  display: none;
 }
 
 .nav-item a {
@@ -601,7 +663,17 @@ button, input, select, textarea {
   font-weight: 600;
 }
 
+/* Long folder names get one line with an ellipsis; the `title` attribute on
+   the link carries the full name on hover. */
+.nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .nav-count {
+  flex-shrink: 0;
   font-size: 11px;
   opacity: 0.6;
   background-color: var(--ui-hover);
@@ -1842,30 +1914,25 @@ button, input, select, textarea {
     min-height: 44px;
   }
 
-  .folder-nav-toggle {
-    display: flex;
-  }
-
-  /* Independent scrolling: folder nav and note list each scroll within
-     their own area. The sidebar itself does not scroll on mobile. The
-     pull-tab button stays visible above the scrolling folder list. */
+  /* The picker is a single row, so only the note list needs an independent
+     scroll area. The dropdown overlays the note list and scrolls itself. */
   .sidebar {
     overflow: hidden;
   }
 
   .folder-nav-container {
-    position: static;
-    display: flex;
-    flex-direction: column;
-    max-height: 40%;
+    position: relative;
     flex-shrink: 0;
   }
 
+  .folder-picker-summary {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
   .folder-nav {
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    -webkit-overflow-scrolling: touch;
+    max-height: 50dvh;
     padding: 8px;
   }
 

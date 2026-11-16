@@ -394,10 +394,10 @@ fn render_menu_bar(
                                 }
                             }
                         }
-                        // Available at every width. The folder nav is a sidebar
-                        // sub-section, not a top-level pane, so collapsing it is
-                        // useful on mobile too — the pull-tab button is the other
-                        // entry point and shares this same state.
+                        // Available at every width. The folder picker is a
+                        // sidebar sub-section, not a top-level pane, so hiding
+                        // it is useful on mobile too. Since the one-row picker
+                        // replaced the pull-tab, this menu is the only control.
                         li {
                             button x-on:click="toggleFolderNav()"
                                 x-bind:class="{ 'active-view': folderNavCollapsed }"
@@ -553,6 +553,14 @@ fn render_sidebar(
         }
     }
 
+    // The one-row picker shows the current folder. Its count follows the same
+    // rule as the list badges: the All Notes total, or the open folder's count.
+    let active_label = active_folder.unwrap_or("All Notes");
+    let active_count = match active_folder {
+        None => notes.len(),
+        Some(folder) => by_folder.get(folder).map(|v| v.len()).unwrap_or(0),
+    };
+
     html! {
         aside class={"sidebar" (active)} data-tab-pane="notes"
             x-bind:class="{ 'mobile-active': tab === 'notes' }" {
@@ -563,33 +571,37 @@ fn render_sidebar(
             }
             div class="folder-nav-container"
                 x-bind:class="{ 'collapsed': folderNavCollapsed }" {
-                button type="button" class="folder-nav-toggle"
-                    x-on:click="toggleFolderNav()"
-                    x-bind:aria-expanded="(!folderNavCollapsed).toString()"
-                    aria-controls="folder-nav-list"
-                    aria-label="Toggle folder navigation" {
-                    span class="folder-nav-toggle-icon" aria-hidden="true" { "▾" }
-                }
-                ul id="folder-nav-list" class="folder-nav" {
-                    // An empty drop folder is the root: dropping a note on "All
-                    // Notes" un-files it, which is the only way back out of a
-                    // folder once every note has left it.
-                    li class={"nav-item" (if active_folder.is_none() { " active" } else { "" })}
-                        data-drop-folder="" {
-                        a href=(base.url("/")) {
-                            span class="nav-label" { "All Notes" }
-                            @if show_nav_count(active_folder, None) {
-                                span class="nav-count" { (notes.len()) }
+                // A native disclosure keeps folder navigation working without
+                // JavaScript. The list is the same markup the drag handlers and
+                // the sidebar refresh look for, so there is one source of truth
+                // for folder links, counts, and drop targets.
+                details class="folder-picker" {
+                    summary class="folder-picker-summary" title=(active_label) {
+                        span class="folder-picker-label" { (active_label) }
+                        span class="nav-count" { (active_count) }
+                        span class="folder-picker-chevron" aria-hidden="true" { "▾" }
+                    }
+                    ul id="folder-nav-list" class="folder-nav" {
+                        // An empty drop folder is the root: dropping a note on
+                        // "All Notes" un-files it, which is the only way back
+                        // out of a folder once every note has left it.
+                        li class={"nav-item" (if active_folder.is_none() { " active" } else { "" })}
+                            data-drop-folder="" {
+                            a href=(base.url("/")) {
+                                span class="nav-label" { "All Notes" }
+                                @if show_nav_count(active_folder, None) {
+                                    span class="nav-count" { (notes.len()) }
+                                }
                             }
                         }
-                    }
-                    @for folder in folders {
-                        li class={"nav-item" (if active_folder == Some(folder.as_str()) { " active" } else { "" })}
-                            data-drop-folder=(folder) {
-                            a href=(folder_url(base, folder)) {
-                                span class="nav-label" { (folder) }
-                                @if show_nav_count(active_folder, Some(folder)) {
-                                    span class="nav-count" { (by_folder.get(folder).map(|v| v.len()).unwrap_or(0)) }
+                        @for folder in folders {
+                            li class={"nav-item" (if active_folder == Some(folder.as_str()) { " active" } else { "" })}
+                                data-drop-folder=(folder) {
+                                a href=(folder_url(base, folder)) title=(folder) {
+                                    span class="nav-label" { (folder) }
+                                    @if show_nav_count(active_folder, Some(folder)) {
+                                        span class="nav-count" { (by_folder.get(folder).map(|v| v.len()).unwrap_or(0)) }
+                                    }
                                 }
                             }
                         }

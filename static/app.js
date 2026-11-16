@@ -18,8 +18,8 @@ function app() {
     // the highlight follows the pointer instead of accumulating on every item
     // the cursor sweeps across.
     _dropTarget: null,
-    // Whether the folder navigation is collapsed. Shared between the mobile
-    // pull-tab button and the View menu toggle so they stay in sync.
+    // Whether the folder picker is hidden. Controlled by the View menu and
+    // persisted so the sidebar keeps the preferred layout.
     folderNavCollapsed: false,
 
     init() {
@@ -30,6 +30,12 @@ function app() {
         const menuBar = document.querySelector('.menu-bar');
         if (this.openMenu && menuBar && !menuBar.contains(event.target)) {
           this.closeMenus();
+        }
+        // The folder picker is a native <details>, so its summary toggles it
+        // with or without JS. This only adds close-on-outside-click.
+        const picker = document.querySelector('.folder-picker');
+        if (picker && picker.open && !picker.contains(event.target)) {
+          picker.open = false;
         }
       };
       document.addEventListener('click', this._onDocClick);
@@ -92,6 +98,15 @@ function app() {
         item.classList.add('dragging');
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', id);
+
+        // Reveal the folder picker as the drop target. This is the same
+        // long-press gesture on touch, so it must work there too: the class
+        // also overrides a collapsed picker in CSS, and opening the native
+        // disclosure is what makes the list's items live drop targets.
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) sidebar.classList.add('dragging-note');
+        const picker = document.querySelector('.folder-picker');
+        if (picker) picker.open = true;
       };
 
       this._onDragOver = (event) => {
@@ -184,6 +199,12 @@ function app() {
       document.querySelectorAll('.note-item.dragging').forEach((el) => {
         el.classList.remove('dragging');
       });
+      const sidebar = document.querySelector('.sidebar');
+      if (sidebar) sidebar.classList.remove('dragging-note');
+      // Back to the one-row picker after every drag, including an abandoned
+      // one. The user reopens it with the summary when they want to browse.
+      const picker = document.querySelector('.folder-picker');
+      if (picker) picker.open = false;
     },
 
     /// Posts a re-file for `id` and reloads so the sidebar reflects the move.
@@ -277,6 +298,8 @@ function app() {
       this.folderNavCollapsed = !this.folderNavCollapsed;
       this._saveFolderNavPreference(this.folderNavCollapsed);
       if (this.folderNavCollapsed) {
+        const picker = document.querySelector('.folder-picker');
+        if (picker) picker.open = false;
         this.refreshSidebarToAllNotes();
       }
     },
@@ -307,9 +330,10 @@ function app() {
 
     /// Refresh the sidebar to the All Notes view without navigating away.
     ///
-    /// Fetches the server-rendered index page and swaps in the folder nav,
-    /// note list, toolbar folder field, and status count. The editor pane and
-    /// note form are untouched, so unsaved edits survive.
+    /// Fetches the server-rendered index page and swaps in the folder picker's
+    /// summary and list, the note list, the File menu's New Note folder field,
+    /// and the status count. The editor pane and note form are untouched, so
+    /// unsaved edits survive.
     refreshSidebarToAllNotes() {
       const base = window.__BASE_PATH__ || '';
       const searchInput = document.querySelector('.search-form input[name="q"]');
@@ -322,12 +346,24 @@ function app() {
           const doc = new DOMParser().parseFromString(html, 'text/html');
           if (!doc.querySelector('.sidebar')) return; // not the app page
 
-          // Swap the folder nav list
+          // Swap the picker's summary (current folder label and count)
+          const newSummary = doc.querySelector('.folder-picker-summary');
+          const oldSummary = document.querySelector('.folder-picker-summary');
+          if (newSummary && oldSummary) {
+            oldSummary.innerHTML = newSummary.innerHTML;
+            oldSummary.title = newSummary.title;
+          }
+
+          // Swap the folder list
           const newNav = doc.querySelector('#folder-nav-list');
           const oldNav = document.querySelector('#folder-nav-list');
           if (newNav && oldNav) {
             oldNav.innerHTML = newNav.innerHTML;
           }
+
+          // Return the picker to its one-row state.
+          const picker = document.querySelector('.folder-picker');
+          if (picker) picker.open = false;
 
           // Swap the note list
           const newList = doc.querySelector('.note-list');
@@ -336,11 +372,18 @@ function app() {
             oldList.innerHTML = newList.innerHTML;
           }
 
-          // Update the toolbar's hidden folder field
-          const newFolderInput = doc.querySelector('.toolbar input[name="folder"]');
-          const oldFolderInput = document.querySelector('.toolbar input[name="folder"]');
-          if (newFolderInput && oldFolderInput) {
-            oldFolderInput.value = newFolderInput.value;
+          // Keep the File menu's New Note form in sync. The All Notes view
+          // emits no hidden folder input, so remove the old one rather than
+          // leaving New Note pointed at the folder we just left.
+          const newFolderInput = doc.querySelector(
+            '.file-menu-dropdown form[action$="/notes"] input[name="folder"]'
+          );
+          const oldFolderInput = document.querySelector(
+            '.file-menu-dropdown form[action$="/notes"] input[name="folder"]'
+          );
+          if (oldFolderInput) {
+            if (newFolderInput) oldFolderInput.value = newFolderInput.value;
+            else oldFolderInput.remove();
           }
 
           // Update the status bar note count

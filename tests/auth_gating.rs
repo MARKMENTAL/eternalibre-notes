@@ -1093,6 +1093,33 @@ async fn sidebar_note_items_and_folder_items_carry_drag_hooks() {
     );
 }
 
+/// The folder list is a dropdown now, so drag must reveal it before the user
+/// can drop. That is JS on both mouse and touch, hence a source/CSS contract
+/// test rather than a rendered-markup one.
+#[tokio::test]
+async fn dragging_a_note_reveals_the_folder_picker() {
+    let f = Fixture::provisioned("folder-picker-drag");
+    let (status, body) = f.get_authed("/").await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        body.contains("dragging-note"),
+        "the drag code should mark the sidebar"
+    );
+    assert!(
+        body.contains("picker.open = true"),
+        "dragstart should open the folder picker for dropping"
+    );
+    assert!(
+        body.contains("picker.open = false"),
+        "dragend should return the picker to one row"
+    );
+    assert!(
+        body.contains(".sidebar.dragging-note .folder-nav-container.collapsed"),
+        "a collapsed picker must still be revealed as a drop target"
+    );
+}
+
 /// Desktop re-files through File > Move to Folder…. Each entry is its own form
 /// posting to `/notes/:id/move`, so a click is a real POST and no JavaScript
 /// performs the move.
@@ -1358,12 +1385,11 @@ async fn sidebar_shows_folder_navigation() {
     assert!(body.contains("nav-count"), "should show note counts");
 }
 
-/// The folder nav is wrapped in `.folder-nav-container` with a pull-tab toggle
-/// button. The toggle must be present in the markup at every width (CSS hides
-/// it on desktop) so mobile users can collapse/expand the folder list.
+/// The folder nav is a one-row picker: a native disclosure whose summary shows
+/// the current folder, with the existing list as its dropdown.
 #[tokio::test]
-async fn folder_nav_container_has_toggle_button() {
-    let f = Fixture::provisioned("folder-nav-toggle");
+async fn folder_nav_is_a_one_row_picker() {
+    let f = Fixture::provisioned("folder-nav-picker");
     f.post_authed("/folders", "name=Alpha").await;
 
     let (status, body) = f.get_authed("/").await;
@@ -1371,24 +1397,58 @@ async fn folder_nav_container_has_toggle_button() {
 
     assert!(
         body.contains("class=\"folder-nav-container\""),
-        "the folder nav should be wrapped in .folder-nav-container"
+        "the picker should stay inside .folder-nav-container"
     );
     assert!(
-        body.contains("class=\"folder-nav-toggle\""),
-        "the pull-tab toggle button should be in the markup"
+        body.contains("<details class=\"folder-picker\""),
+        "the folder nav should be a native disclosure"
     );
     assert!(
-        body.contains("toggleFolderNav()"),
-        "the toggle button should call toggleFolderNav()"
+        body.contains("class=\"folder-picker-summary\""),
+        "the disclosure should have a one-row summary"
     );
     assert!(
-        body.contains("aria-controls=\"folder-nav-list\""),
-        "the toggle should reference the folder nav list via aria-controls"
+        body.contains("id=\"folder-nav-list\""),
+        "the existing folder list should be the dropdown content"
+    );
+    assert!(
+        !body.contains("class=\"folder-nav-toggle\""),
+        "the old mobile pull-tab should be gone"
+    );
+
+    let summary = folder_picker_summary_region(&body);
+    assert!(
+        summary.contains("All Notes"),
+        "the summary should name the current folder"
+    );
+    assert!(
+        summary.contains("nav-count"),
+        "the summary should carry the current count"
     );
 }
 
-/// The View menu has a Hide/Show Folder Nav toggle that shares the same state
-/// as the pull-tab button.
+#[tokio::test]
+async fn folder_picker_names_the_active_folder() {
+    let f = Fixture::provisioned("folder-picker-active");
+    f.post_authed("/folders", "name=Alpha").await;
+    f.post_authed("/folders", "name=Beta").await;
+
+    let (status, body) = f.get_authed("/?folder=Alpha").await;
+    assert_eq!(status, StatusCode::OK);
+
+    let summary = folder_picker_summary_region(&body);
+    assert!(
+        summary.contains(">Alpha<"),
+        "the summary should name the open folder"
+    );
+    assert!(
+        !summary.contains("All Notes"),
+        "the folder label should replace the All Notes label"
+    );
+}
+
+/// The View menu has a Hide/Show Folder Nav toggle. The old mobile pull-tab
+/// was removed with the one-row picker, so this is now the collapse control.
 #[tokio::test]
 async fn view_menu_has_folder_nav_toggle() {
     let f = Fixture::provisioned("view-menu-folder-nav");
@@ -1581,19 +1641,17 @@ async fn toolbar_actions_are_a_noscript_fallback() {
     }
 }
 
-/// On mobile, the folder nav and note list scroll independently within their
-/// own bounded areas. The sidebar itself does not scroll, and the pull-tab
-/// toggle stays visible above the scrolling folder list.
+/// On mobile the folder picker is a single row, so only the note list needs an
+/// independent scroll area. The dropdown overlays the note list and scrolls
+/// itself, and the old pull-tab row is gone.
 #[tokio::test]
-async fn mobile_folder_nav_scrolls_independently() {
-    let f = Fixture::provisioned("mobile-independent-scroll");
+async fn mobile_folder_picker_is_a_single_row() {
+    let f = Fixture::provisioned("mobile-folder-picker");
     f.post_authed("/folders", "name=Alpha").await;
 
     let (status, body) = f.get_authed("/").await;
     assert_eq!(status, StatusCode::OK);
 
-    // The mobile CSS must make the sidebar non-scrollable and give the
-    // folder nav and note list their own scroll areas.
     let mobile_css_start = body
         .find("@media (max-width: 600px)")
         .expect("mobile media query should exist");
@@ -1604,16 +1662,20 @@ async fn mobile_folder_nav_scrolls_independently() {
         "mobile sidebar should not scroll"
     );
     assert!(
-        mobile_css.contains(".folder-nav") && mobile_css.contains("overflow-y: auto"),
-        "folder nav should scroll independently"
-    );
-    assert!(
         mobile_css.contains(".note-list") && mobile_css.contains("overflow-y: auto"),
         "note list should scroll independently"
     );
     assert!(
-        mobile_css.contains("max-height: 40%"),
-        "folder nav container should have a max height"
+        mobile_css.contains(".folder-picker-summary") && mobile_css.contains("min-height: 44px"),
+        "the picker summary should be a 44px touch target"
+    );
+    assert!(
+        mobile_css.contains(".folder-nav") && mobile_css.contains("max-height: 50dvh"),
+        "the dropdown should cap its own height"
+    );
+    assert!(
+        !mobile_css.contains(".folder-nav-toggle"),
+        "the pull-tab styles should be gone"
     );
 }
 
@@ -1633,6 +1695,18 @@ fn folder_nav_region(body: &str) -> &str {
         .expect("the folder nav should have a <ul> tag");
     let rest = &body[ul_start..];
     let end = rest.find("</ul>").expect("the folder nav should be closed");
+    &rest[..end]
+}
+
+/// The folder picker summary, and nothing else.
+fn folder_picker_summary_region(body: &str) -> &str {
+    let start = body
+        .find("class=\"folder-picker-summary\"")
+        .expect("the folder picker summary should be present");
+    let rest = &body[start..];
+    let end = rest
+        .find("</summary>")
+        .expect("the folder picker summary should close");
     &rest[..end]
 }
 
@@ -2761,6 +2835,18 @@ async fn hiding_folder_nav_refreshes_sidebar_to_all_notes() {
     assert!(
         !refresh_fn.contains("location.reload"),
         "refreshSidebarToAllNotes should not reload the page"
+    );
+    assert!(
+        refresh_fn.contains(".folder-picker-summary"),
+        "refresh should update the picker summary"
+    );
+    assert!(
+        refresh_fn.contains(".file-menu-dropdown form[action$=\"/notes\"] input[name=\"folder\"]"),
+        "refresh should update the File menu New Note form"
+    );
+    assert!(
+        !refresh_fn.contains(".toolbar input[name=\"folder\"]"),
+        "the stale toolbar folder selector should be gone"
     );
 }
 

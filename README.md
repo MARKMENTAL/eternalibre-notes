@@ -57,6 +57,7 @@ app from making that request.
 - **File-based storage** — notes are persisted as Markdown files in `notes/`
 - **Virtual folders** — organize notes into folders without real directories; folders are encoded as `[Folder]uuid.md` filename prefixes
 - **Move notes between folders** — drag a note onto a folder, use `File → Move to Folder…`, or the Move control in the editor on a phone
+- **One-row folder picker** — the sidebar shows the current folder; the folder list opens on demand and automatically while dragging, so it stays droppable however long the note list grows
 - **Per-note exports** — download Markdown or self-contained themed HTML, or print/save the themed note as PDF
 - **40 built-in themes** — including KDE Breeze, Blueberry Professional, classic desktop homages, distro-inspired palettes, warm neutrals, and more
 - **Markdown extras** — tables, tasklists, strikethrough, and footnotes via `pulldown-cmark`
@@ -95,9 +96,9 @@ Root notes (no folder) keep the plain `uuid.md` format. Folders exist only when 
 
 **Creating a folder:** click `+ New Folder` in the sidebar, type a name, and the app creates a new note in that folder and opens it.
 
-**Filtering:** click a folder name in the sidebar to see only that folder's notes. Click **All Notes** to see everything grouped by folder. When a folder is active, **File → New Note** creates notes in that folder.
+**Filtering:** choose a folder from the sidebar's folder picker to see only that folder's notes. Choose **All Notes** to see everything grouped by folder. When a folder is active, **File → New Note** creates notes in that folder.
 
-**Moving a note between folders:** drag it from the sidebar onto a folder, pick `File → Move to Folder…`, or use the Move control under the editor on a phone. Dropping a note on **All Notes** — or choosing **Unfiled** — takes it back out of its folder.
+**Moving a note between folders:** drag it from the sidebar onto a folder (the folder list opens while you drag), pick `File → Move to Folder…`, or use the Move control under the editor on a phone. Dropping a note on **All Notes** — or choosing **Unfiled** — takes it back out of its folder.
 
 A move renames the file: `[Work]uuid.md` becomes `[Home]uuid.md`. The note's id is left untouched, so links to it keep working, and its modified time is not bumped, since re-filing is not an edit.
 
