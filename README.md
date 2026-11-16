@@ -20,6 +20,14 @@ authenticator app. There is no telemetry or account service. Optional weather
 lookup sends the location you configure to wttr.in; leave it unset to keep the
 app from making that request.
 
+## What's new in 1.0
+
+- **First stable release** — EternaLibre Notes reaches 1.0
+- **File-menu actions** — New Note and Delete now live in `File` at every width, with a `<noscript>` fallback so CRUD still works without JavaScript
+- **One-row folder picker** — the sidebar shows the current folder; the list opens on demand and automatically while dragging a note
+- **Evangelion themes** — Eva Unit-00 Prototype, Unit-00 Rei, Unit-01, and Unit-02 join the catalogue, now 44 themes
+- **systemd user service** — a checked-in unit template and setup guide for running the release binary
+
 ## What's new in 0.3.0
 
 - **Welcome dashboard** — recent notes and an optional local weather card fill the editor when no note is open
