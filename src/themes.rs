@@ -70,7 +70,7 @@ impl Theme {
     /// any threshold in that gap returns the same answer. That margin is why
     /// this can use the local gamma-encoded `relative_luminance` rather than
     /// the linearised one in `syntax.rs` — for a binary split the two agree
-    /// on all 40 themes, and adding a third implementation would cost more
+    /// on all 44 themes, and adding a third implementation would cost more
     /// than the precision is worth.
     pub fn is_dark(&self) -> bool {
         relative_luminance(self.bg) < 0.5
@@ -256,6 +256,50 @@ pub static PREDEFINED_THEMES: &[Theme] = &[
         ],
         ansi_bright: [
             "#6272a4", "#ff6e6e", "#69ff94", "#ffffa5", "#d6acff", "#ff92df", "#a4ffff", "#ffffff",
+        ],
+    },
+    Theme {
+        name: "Eva Unit-00 (Prototype)",
+        fg: "#ffc24a",
+        bg: "#2a1a05",
+        ansi_normal: [
+            "#1a1206", "#e35d3f", "#a3a83c", "#f0a500", "#6f8fb0", "#d98a6a", "#4fbfa8", "#ffd98a",
+        ],
+        ansi_bright: [
+            "#5c4520", "#ff7a55", "#d4d45a", "#ffc94d", "#9db8d8", "#f0a67a", "#7fe0cc", "#fff0c9",
+        ],
+    },
+    Theme {
+        name: "Eva Unit-00 (Rei)",
+        fg: "#b7dcff",
+        bg: "#0a1526",
+        ansi_normal: [
+            "#0d1620", "#e35d6a", "#78c6a3", "#e8b04b", "#7aa2f7", "#b8a6d9", "#66d9e8", "#d6e9ff",
+        ],
+        ansi_bright: [
+            "#3d4f63", "#ff8a95", "#9de0bf", "#ffd27a", "#a8c7e8", "#d4c5f0", "#8ff0ff", "#f0f8ff",
+        ],
+    },
+    Theme {
+        name: "Eva Unit-01 (Shinji)",
+        fg: "#8aff5c",
+        bg: "#241030",
+        ansi_normal: [
+            "#1a1024", "#e05252", "#4de86b", "#f2a33c", "#6d8bd8", "#a259ff", "#35e0d0", "#d7ffc2",
+        ],
+        ansi_bright: [
+            "#4a3b63", "#ff6b6b", "#8dff5a", "#ffc857", "#8fa8ff", "#c77dff", "#5ff2dc", "#efffe4",
+        ],
+    },
+    Theme {
+        name: "Eva Unit-02 (Asuka)",
+        fg: "#ff8c42",
+        bg: "#350808",
+        ansi_normal: [
+            "#1a0b0b", "#ff5252", "#a3c34a", "#f28e2b", "#5b8dd6", "#e0559b", "#3fbfbf", "#ffd9b8",
+        ],
+        ansi_bright: [
+            "#5c2a2a", "#ff6b61", "#c4e06a", "#ffb85c", "#7fb0f0", "#ff7cb8", "#5fe0d8", "#ffe9d4",
         ],
     },
     Theme {
@@ -607,7 +651,7 @@ mod tests {
             "Sunny Day should have been deleted"
         );
         assert!(!PREDEFINED_THEMES.iter().any(|t| t.name == "Spring Blossom"));
-        assert_eq!(PREDEFINED_THEMES.len(), 40);
+        assert_eq!(PREDEFINED_THEMES.len(), 44);
     }
 
     #[test]
@@ -672,6 +716,39 @@ mod tests {
         assert_eq!(get_theme("Ubuntu Professional").ansi_bright[4], "#a54018");
         assert_eq!(get_theme("Debian Professional").ansi_bright[4], "#9b3643");
         assert_eq!(get_theme("Gentoo Professional").ansi_bright[4], "#a08bbc");
+    }
+
+    #[test]
+    fn evangelion_themes_port_the_supplied_palettes() {
+        for (name, fg, bg) in [
+            ("Eva Unit-00 (Prototype)", "#ffc24a", "#2a1a05"),
+            ("Eva Unit-00 (Rei)", "#b7dcff", "#0a1526"),
+            ("Eva Unit-01 (Shinji)", "#8aff5c", "#241030"),
+            ("Eva Unit-02 (Asuka)", "#ff8c42", "#350808"),
+        ] {
+            let theme = get_theme(name);
+            assert_eq!(theme.name, name, "{name} should be in the catalogue");
+            assert_eq!(theme.fg, fg, "{name} foreground");
+            assert_eq!(theme.bg, bg, "{name} background");
+            assert!(theme.is_dark(), "{name} should be a dark theme");
+        }
+
+        // Pin a normal and bright slot per theme so a transcription slip in
+        // the ANSI arrays fails rather than silently changing syntax colors.
+        assert_eq!(
+            get_theme("Eva Unit-00 (Prototype)").ansi_normal[1],
+            "#e35d3f"
+        );
+        assert_eq!(
+            get_theme("Eva Unit-00 (Prototype)").ansi_bright[6],
+            "#7fe0cc"
+        );
+        assert_eq!(get_theme("Eva Unit-00 (Rei)").ansi_normal[4], "#7aa2f7");
+        assert_eq!(get_theme("Eva Unit-00 (Rei)").ansi_bright[5], "#d4c5f0");
+        assert_eq!(get_theme("Eva Unit-01 (Shinji)").ansi_normal[2], "#4de86b");
+        assert_eq!(get_theme("Eva Unit-01 (Shinji)").ansi_bright[5], "#c77dff");
+        assert_eq!(get_theme("Eva Unit-02 (Asuka)").ansi_normal[5], "#e0559b");
+        assert_eq!(get_theme("Eva Unit-02 (Asuka)").ansi_bright[2], "#c4e06a");
     }
 
     #[test]

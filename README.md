@@ -59,7 +59,7 @@ app from making that request.
 - **Move notes between folders** — drag a note onto a folder, use `File → Move to Folder…`, or the Move control in the editor on a phone
 - **One-row folder picker** — the sidebar shows the current folder; the folder list opens on demand and automatically while dragging, so it stays droppable however long the note list grows
 - **Per-note exports** — download Markdown or self-contained themed HTML, or print/save the themed note as PDF
-- **40 built-in themes** — including KDE Breeze, Blueberry Professional, classic desktop homages, distro-inspired palettes, warm neutrals, and more
+- **44 built-in themes** — including KDE Breeze, Blueberry Professional, Evangelion-inspired units, classic desktop homages, distro-inspired palettes, warm neutrals, and more
 - **Markdown extras** — tables, tasklists, strikethrough, and footnotes via `pulldown-cmark`
 - **Syntax highlighting** — code blocks are highlighted using the current theme's ANSI palette via `syntect`
 - **Mobile responsive** — collapses to a Notes/Write/Preview tab layout on phones, with 44px touch targets
@@ -242,7 +242,7 @@ cargo fmt
 | `src/notes.rs` | Note model and file-system persistence |
 | `src/markdown.rs` | Markdown to HTML with syntax highlighting |
 | `src/syntax.rs` | syntect integration and per-theme syntax color scheme generation |
-| `src/themes.rs` | 40 predefined themes and CSS variable engine |
+| `src/themes.rs` | 44 predefined themes and CSS variable engine |
 | `static/style.css` | Full application stylesheet |
 | `static/app.js` | Alpine.js component: preview, search, menus, tabs, drag-and-drop re-filing |
 | `eternalibre-notes.service` | systemd user-unit template for running the release binary |
