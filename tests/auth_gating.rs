@@ -690,10 +690,15 @@ async fn delete_form_has_confirmation_prompt() {
     let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
     assert_eq!(status, StatusCode::OK);
 
-    // Find the delete form by its note-specific action
-    let form_start = body
-        .find(&format!("action=\"/notes/{id}\""))
+    // Anchor on the delete label rather than the action: the editor's save
+    // form posts to the same `/notes/{id}` route, and the noscript toolbar
+    // fallback carries a second delete form.
+    let label_at = body
+        .find("data-delete-label")
         .expect("delete form should exist");
+    let form_start = body[..label_at]
+        .rfind("<form")
+        .expect("delete form should open");
     let form_end = body[form_start..]
         .find("</form>")
         .map(|i| form_start + i + "</form>".len())
@@ -1453,6 +1458,127 @@ async fn save_note_is_in_file_menu() {
         !edit_menu.contains("saveCurrentNote()"),
         "Save Note should NOT be in the Edit menu"
     );
+}
+
+/// New Note and Delete belong to the File menu on every width, and New Note
+/// must respect the folder currently being viewed.
+#[tokio::test]
+async fn file_menu_holds_new_note_and_delete() {
+    let f = Fixture::provisioned("file-menu-actions");
+    let (_, _, loc) = f.post_authed("/folders", "name=Projects").await;
+    let loc = loc.expect("folder creation redirects");
+    let id = loc.rsplit('/').next().unwrap().to_string();
+
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Scope to the whole File menu, including the nested submenu lists.
+    let file_start = body
+        .find("toggleMenu('file')")
+        .expect("the File menu should exist");
+    let file_end = body[file_start..]
+        .find("toggleMenu('edit')")
+        .map(|i| file_start + i)
+        .expect("the File menu should end before the Edit menu");
+    let file_menu = &body[file_start..file_end];
+
+    let create_at = file_menu
+        .find("action=\"/notes\"")
+        .expect("New Note should be in the File menu");
+    let create_end = file_menu[create_at..]
+        .find("</form>")
+        .map(|i| create_at + i)
+        .expect("the New Note form should close");
+    let create_form = &file_menu[create_at..create_end];
+    assert!(
+        create_form.contains("name=\"folder\""),
+        "New Note must submit the active folder"
+    );
+    assert!(
+        create_form.contains("value=\"Projects\""),
+        "New Note should inherit the folder being viewed"
+    );
+    assert!(
+        create_form.contains("New Note"),
+        "the File menu should label the action New Note"
+    );
+
+    let delete_at = file_menu
+        .find("data-delete-label")
+        .expect("Delete should be in the File menu");
+    let delete_start = file_menu[..delete_at]
+        .rfind("<form")
+        .expect("the delete form should open");
+    let delete_end = file_menu[delete_start..]
+        .find("</form>")
+        .map(|i| delete_start + i)
+        .expect("the delete form should close");
+    let delete_form = &file_menu[delete_start..delete_end];
+    assert!(
+        delete_form.contains("value=\"delete\"") && delete_form.contains("_method"),
+        "the File menu delete must still post _method=delete"
+    );
+    assert!(
+        delete_form.contains("Delete Note…"),
+        "the File menu should label the destructive action Delete Note…"
+    );
+    assert!(
+        delete_form.contains("[Projects-"),
+        "the confirmation label should include the folder"
+    );
+}
+
+/// The visible toolbar no longer carries create/delete actions. They remain as
+/// plain forms inside `<noscript>` so CRUD survives with JavaScript disabled,
+/// when the File menu cannot open.
+#[tokio::test]
+async fn toolbar_actions_are_a_noscript_fallback() {
+    let f = Fixture::provisioned("toolbar-noscript-actions");
+    let id = f.create_note().await;
+
+    let (status, body) = f.get_authed(&format!("/notes/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let toolbar_start = body
+        .find("class=\"toolbar\"")
+        .expect("the toolbar should exist");
+    let tab_start = body[toolbar_start..]
+        .find("class=\"tab-bar\"")
+        .map(|i| toolbar_start + i)
+        .expect("the tab bar should follow the toolbar");
+    let toolbar = &body[toolbar_start..tab_start];
+
+    let noscript_start = toolbar
+        .find("<noscript>")
+        .expect("the toolbar should carry a noscript fallback");
+    let noscript_end = toolbar
+        .find("</noscript>")
+        .map(|i| i + "</noscript>".len())
+        .expect("the noscript fallback should close");
+    let fallback = &toolbar[noscript_start..noscript_end];
+    assert!(
+        fallback.contains("btn btn-primary") && fallback.contains("+ New Note"),
+        "no-JS fallback should keep the New Note button"
+    );
+    assert!(
+        fallback.contains("btn btn-danger") && fallback.contains("Delete"),
+        "no-JS fallback should keep the Delete button"
+    );
+    assert!(
+        fallback.contains("action=\"/notes\"")
+            && fallback.contains("_method")
+            && fallback.contains("value=\"delete\""),
+        "no-JS fallback should submit the same create and delete forms"
+    );
+
+    // Everything after the fallback is the ordinary visible toolbar.
+    let visible = &toolbar[noscript_end..];
+    for forbidden in ["btn-primary", "btn-danger", "action=\"/notes\""] {
+        assert!(
+            !visible.contains(forbidden),
+            "the visible toolbar should not contain {forbidden}:\n{visible}"
+        );
+    }
 }
 
 /// On mobile, the folder nav and note list scroll independently within their

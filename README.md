@@ -52,7 +52,7 @@ app from making that request.
 
 - **TOTP-locked by default** — authenticator app required on first launch and after every restart
 - **Server-side rendered** with Axum and Maud — fast, type-safe HTML templates
-- **Uses a small amount of JavaScript** — note editing, search, and the login form are plain HTML; the menus, mobile tabs, live preview, and drag-and-drop re-filing are the JS-dependent parts
+- **Uses a small amount of JavaScript** — note editing, search, create/delete, and the login form are plain HTML; the menus, mobile tabs, live preview, and drag-and-drop re-filing are the JS-dependent parts. With JavaScript disabled, a `<noscript>` toolbar fallback keeps `New Note` and `Delete` available because the `File` menu cannot open
 - **Alpine.js enhancements** — live Markdown preview, instant search, keyboard shortcuts
 - **File-based storage** — notes are persisted as Markdown files in `notes/`
 - **Virtual folders** — organize notes into folders without real directories; folders are encoded as `[Folder]uuid.md` filename prefixes
@@ -95,7 +95,7 @@ Root notes (no folder) keep the plain `uuid.md` format. Folders exist only when 
 
 **Creating a folder:** click `+ New Folder` in the sidebar, type a name, and the app creates a new note in that folder and opens it.
 
-**Filtering:** click a folder name in the sidebar to see only that folder's notes. Click **All Notes** to see everything grouped by folder. When a folder is active, the **+ New Note** button creates notes in that folder.
+**Filtering:** click a folder name in the sidebar to see only that folder's notes. Click **All Notes** to see everything grouped by folder. When a folder is active, **File → New Note** creates notes in that folder.
 
 **Moving a note between folders:** drag it from the sidebar onto a folder, pick `File → Move to Folder…`, or use the Move control under the editor on a phone. Dropping a note on **All Notes** — or choosing **Unfiled** — takes it back out of its folder.
 

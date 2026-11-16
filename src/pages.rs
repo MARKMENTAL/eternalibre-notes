@@ -93,7 +93,12 @@ pub fn render_app(
                 script defer src=(base.url("/static/alpine.min.js")) {}
             }
             body x-data="app()" x-on:keydown="handleKeydown($event)" {
-                (render_menu_bar(base, current_note, folder_ctx.folders))
+                (render_menu_bar(
+                    base,
+                    current_note,
+                    folder_ctx.folders,
+                    folder_ctx.active_folder,
+                ))
                 (render_toolbar(
                     current_note,
                     page.query,
@@ -178,7 +183,57 @@ fn render_tab_bar(default_tab: &str, has_note: bool) -> Markup {
     }
 }
 
-fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[String]) -> Markup {
+/// Plain form that creates a note in the folder currently being viewed.
+///
+/// Shared by the File menu and the `<noscript>` toolbar fallback. The hidden
+/// `folder` input is why this is a helper: the File menu previously omitted it
+/// and silently created a root note even while a folder was active.
+fn render_new_note_form(
+    active_folder: Option<&str>,
+    button_class: Option<&str>,
+    label: &str,
+    base: &Base<'_>,
+) -> Markup {
+    html! {
+        form action=(base.url("/notes")) method="post" {
+            @if let Some(folder) = active_folder {
+                input type="hidden" name="folder" value=(folder);
+            }
+            button type="submit" class=[button_class] { (label) }
+        }
+    }
+}
+
+/// Delete form with the confirmation prompt.
+///
+/// Shared by the File menu and the `<noscript>` toolbar fallback so the
+/// destructive POST and its confirmation label cannot drift apart.
+fn render_delete_note_form(
+    note: &Note,
+    button_class: &str,
+    label: &str,
+    base: &Base<'_>,
+) -> Markup {
+    html! {
+        form
+            action=(base.url(&format!("/notes/{}", note.id)))
+            method="post"
+            data-delete-label=(format!("[{}-{}]",
+                note.folder.as_deref().unwrap_or("Unfiled"),
+                note.title))
+            onsubmit="return confirm('Are you sure you want to delete ' + this.dataset.deleteLabel + '? This cannot be undone.')" {
+            input type="hidden" name="_method" value="delete";
+            button type="submit" class=(button_class) { (label) }
+        }
+    }
+}
+
+fn render_menu_bar(
+    base: &Base<'_>,
+    current_note: Option<&Note>,
+    folders: &[String],
+    active_folder: Option<&str>,
+) -> Markup {
     let theme_return = theme_return_path(current_note);
     let weather_href = dedicated_page_href(base, "/weather", current_note);
     let welcome_href = dedicated_page_href(base, "/welcome", current_note);
@@ -191,11 +246,18 @@ fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[Stri
                     span { "File" }
                     ul class="menu-dropdown file-menu-dropdown" {
                         li {
-                            form action=(base.url("/notes")) method="post" {
-                                button type="submit" { "New Note" }
+                            (render_new_note_form(
+                                active_folder,
+                                Some("menu-action"),
+                                "New Note",
+                                base,
+                            ))
+                        }
+                        li {
+                            button class="menu-action" x-on:click="saveCurrentNote()" {
+                                "Save Note"
                             }
                         }
-                        li { button x-on:click="saveCurrentNote()" { "Save Note" } }
                         li { hr; }
                         li {
                             a href=(base.url("/export")) { "Export All Notes" }
@@ -278,6 +340,19 @@ fn render_menu_bar(base: &Base<'_>, current_note: Option<&Note>, folders: &[Stri
                             } @else {
                                 button type="button" class="menu-submenu-trigger" disabled
                                     aria-disabled="true" { "Move to Folder…" }
+                            }
+                        }
+                        @if let Some(note) = current_note {
+                            // Destructive action last, behind a separator, so it
+                            // is never adjacent to New Note.
+                            li { hr; }
+                            li {
+                                (render_delete_note_form(
+                                    note,
+                                    "menu-danger menu-action",
+                                    "Delete Note…",
+                                    base,
+                                ))
                             }
                         }
                     }
@@ -392,23 +467,21 @@ fn render_toolbar(
     let theme_return = theme_return_path(current_note);
     html! {
         div class="toolbar" {
-            div class="toolbar-group" {
-                form action=(base.url("/notes")) method="post" {
-                    @if let Some(folder) = active_folder {
-                        input type="hidden" name="folder" value=(folder);
-                    }
-                    button type="submit" class="btn btn-primary" { "+ New Note" }
-                }
-                @if let Some(note) = current_note {
-                    form
-                        action=(base.url(&format!("/notes/{}", note.id)))
-                        method="post"
-                        data-delete-label=(format!("[{}-{}]",
-                            note.folder.as_deref().unwrap_or("Unfiled"),
-                            note.title))
-                        onsubmit="return confirm('Are you sure you want to delete ' + this.dataset.deleteLabel + '? This cannot be undone.')" {
-                        input type="hidden" name="_method" value="delete";
-                        button type="submit" class="btn btn-danger" { "Delete" }
+            // Both actions live in the File menu now. The menu cannot open
+            // without JavaScript, so keep plain-form equivalents here for the
+            // no-script case. The inner div matters: styling `noscript` itself
+            // can expose its text content in engines that render it as text
+            // when scripting is enabled.
+            noscript {
+                div class="toolbar-group" {
+                    (render_new_note_form(
+                        active_folder,
+                        Some("btn btn-primary"),
+                        "+ New Note",
+                        base,
+                    ))
+                    @if let Some(note) = current_note {
+                        (render_delete_note_form(note, "btn btn-danger", "Delete", base))
                     }
                 }
             }
@@ -958,7 +1031,7 @@ pub fn render_weather_page(
                 script defer src=(base.url("/static/alpine.min.js")) {}
             }
             body class="weather-page" x-data="app()" x-on:keydown="handleKeydown($event)" {
-                (render_menu_bar(base, None, &[]))
+                (render_menu_bar(base, None, &[], None))
                 main class="weather-page-main" {
                     p class="welcome-eyebrow" { "MOBILE WEATHER" }
                     h1 { "Weather" }
@@ -1000,7 +1073,7 @@ pub fn render_welcome_page(
                 script defer src=(base.url("/static/alpine.min.js")) {}
             }
             body class="welcome-page" x-data="app()" x-on:keydown="handleKeydown($event)" {
-                (render_menu_bar(base, None, &[]))
+                (render_menu_bar(base, None, &[], None))
                 main class="welcome-page-main welcome-state" {
                     (render_welcome_heading(quotes))
                     (render_recent_card(recent_notes, base))
@@ -1187,7 +1260,7 @@ pub fn render_about(theme_name: &str, base: &Base<'_>) -> Markup {
                 // The About page has no notes pane and no selected note, so
                 // there is nothing to move; an empty folder list renders the
                 // submenu trigger disabled.
-                (render_menu_bar(base, None, &[]))
+                (render_menu_bar(base, None, &[], None))
                 main {
                     h1 { "EternaLibre Notes" }
                     p class="tagline" { "Free notes, forever." }

@@ -134,6 +134,13 @@ button, input, select, textarea {
   text-decoration: none;
 }
 
+/* Destructive File menu entry. Uses the already contrast-guarded danger color
+   from `Theme::button_colors(1)`, which falls back to the foreground on
+   palettes where bright red is not legible. */
+.menu-dropdown .menu-danger {
+  color: var(--btn-danger-bg);
+}
+
 /* Marks a View menu item whose pane is currently collapsed, so the state is
    readable at a glance instead of only via the Hide/Show label. */
 .menu-dropdown button.active-view::before {
@@ -1656,6 +1663,17 @@ button, input, select, textarea {
     min-width: 120px;
     max-width: 180px;
     max-height: calc(100dvh - 56px);
+  }
+
+  /* New Note, Save Note, and Delete now live in the File menu, so the primary
+     actions need the same 44px touch target the toolbar buttons used to carry.
+     Scoped to `.menu-action` rather than the whole dropdown: stretching every
+     export and submenu entry too made the File menu taller than a landscape
+     phone viewport, and it cannot scroll because its flyouts must escape. */
+  .file-menu-dropdown .menu-action {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
   }
 
   .app-title {

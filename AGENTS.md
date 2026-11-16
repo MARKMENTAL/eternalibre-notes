@@ -26,7 +26,7 @@ The application layout follows a classic 3-column / top-menu layout rendered cle
 +-----------------------------------------------------------------------------------+
 |  [File] [Edit] [View] [Theme] [Help]        [EternaLibre Notes v{CARGO_PKG_VERSION}] |  <-- Classic Menu Bar; version is manifest-derived
 +-----------------------------------------------------------------------------------+
-|  [+ New Note]  [Delete] |  Search...                  | Theme: [ Dark v ]             |  <-- Apple-style Toolbar
+|  Search...                                         | Theme: [ Dark v ]             |  <-- Apple-style Toolbar
 +-------------------+-----------------------------------+---------------------------+
 | Sidebar           | Editor Pane                       | Live Preview Pane         |
 | ----------------- | --------------------------------- | ------------------------- |
@@ -46,7 +46,7 @@ The application layout follows a classic 3-column / top-menu layout rendered cle
 1. **Fluid Typography**: Inter/SF Pro or high-quality system sans-serif for the interface; Monospace for Markdown source; clean sans for HTML preview.
 2. **Subtle Elevation & Borders**: Soft 1px borders using `--ui-border` / `--app-bg` contrast shades rather than heavy drop shadows.
 3. **Apple-style Note List**: Sidebar lists show note title, relative timestamp, and a single line preview snippet in muted text.
-4. **Progressive Enhancement**: Note editing, server-side search, weather-location settings, and the login form work with JavaScript disabled via HTML forms and page reloads. The visible theme selector currently submits through Alpine's change handler, so theme changes from the toolbar require JavaScript. Menu dropdowns, mobile tab switching, live preview, drag-and-drop re-filing, and automatic opening of the PDF print dialog are also JavaScript-dependent.
+4. **Progressive Enhancement**: Note editing, server-side search, weather-location settings, and the login form work with JavaScript disabled via HTML forms and page reloads. New Note and Delete live in the `File` menu for everyone; a `<noscript>` toolbar group keeps the same plain forms available when scripting is disabled, because the menu itself cannot open. The visible theme selector currently submits through Alpine's change handler, so theme changes from the toolbar require JavaScript. Menu dropdowns, mobile tab switching, live preview, drag-and-drop re-filing, and automatic opening of the PDF print dialog are also JavaScript-dependent.
 
 When no note is open, the editor pane renders a welcome dashboard with up to five recently updated notes from the current sidebar result set. Its optional weather card submits the location and a Celsius/Fahrenheit radio as a plain form; the server stores the location in `.weather_location` and the unit in `.weather_units` under the notes directory and sends the location to wttr.in only when the dashboard or the dedicated `/weather` page is requested. The `format=j1` response keeps both scales so switching units reuses the cache without refetching. Results and failed checks are cached for 15 minutes, and requests time out after four seconds. Without a saved location, no weather request is made. The table shows current conditions as its top row followed by each forecast date wttr.in returns (currently three dates including today); render what is present rather than assuming a five-day horizon.
 
@@ -64,7 +64,7 @@ Two touch-specific details follow from the long press. `.note-item` sets `-webki
 
 Neither entry point may carry `.desktop-only`. That class hides at `max-width: 600px`, and the bar is already hidden above 600px by a `min-width` query; adding the class composes to hiding it at *every* width and phones lose re-filing entirely. That shipped once. No Rust test can observe `display: none`, so `move_entry_points_are_not_desktop_only` pins the markup contract instead. All forms post the same `folder` field, where an empty value means the root. See §11 for the rename rule that makes a move destructive if done any other way, and for why user-supplied folder names force the flyout's `max-width`/wrapping.
 
-The status bar currently displays `Saved` as a static label; it does not track unsaved editor changes. The toolbar has no separate Preview button: Preview is a pane and a mobile tab.
+The status bar currently displays `Saved` as a static label; it does not track unsaved editor changes. The toolbar has no separate Preview button: Preview is a pane and a mobile tab. It also carries no New Note or Delete buttons; both are `File` menu entries, with the `<noscript>` fallback described above for the scripting-disabled case.
 
 ---
 
@@ -330,7 +330,7 @@ toggleSubmenu(name, event) {
 
 Dropdowns are revealed by a class on the trigger rather than `x-show`, because Alpine's `x-show` works by *removing* an inline `display` when true, at which point the stylesheet's `display: none` would take over again and the menu would stay hidden. Top-level menus use `.menu-item.open`; the File export flyout uses `.menu-submenu-list.open`. This also means menus stay closed if JavaScript never loads, instead of all five appearing at once.
 
-**Consequence: the menu bar requires JavaScript.** Since `.open` is applied by Alpine, no dropdown opens without it. This is a deliberate trade-off (see section 2, directive 4). Note CRUD and server-side search remain usable without JavaScript, but the visible theme selector and menu-based actions do not. If you change this, keep `.desktop-only`, `.open`, and submenu state consistent.
+**Consequence: the menu bar requires JavaScript.** Since `.open` is applied by Alpine, no dropdown opens without it. This is a deliberate trade-off (see section 2, directive 4). Note CRUD and server-side search remain usable without JavaScript because the toolbar carries a `<noscript>` group with the same New Note/Delete forms; the visible theme selector and the rest of the menu-based actions do not. If you change this, keep `.desktop-only`, `.open`, and submenu state consistent.
 
 Outside-click detection is a manual `document` listener in an `init()` hook with a matching `destroy()`. `Escape` closes any open menu.
 
